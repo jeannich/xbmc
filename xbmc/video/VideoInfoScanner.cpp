@@ -349,23 +349,30 @@ namespace KODI::VIDEO
         m_handle->SetText(remoteItem->GetMovieName(true));
       }
 
-      /*
+      // For TV shows we only store the folders
+      //    When a tv show is detected, its content are analysed specificaly at:
+      //         INFO_RET ret = RetrieveInfoForEpisodes(pItem, idTvShow, info2, useLocal, pDlgProgress);
       if(contentType_AsDefinedInScraper == CONTENT_TVSHOWS) {
-        // Store only folders in case of TV_SHOWS
-      }*/
+        if (remoteItem->m_bIsFolder) {
+          remoteDirectoryItems.Add(remoteItem);
 
-      if (remoteItem->m_bIsFolder)
-      {
-        if(rootPathScraperScanSettings.recurse > 0 ) {
-          if( isPathAllowedForScan(strDirectory, rootPathScraperScanSettings, contentType_AsDefinedInScraper) ) {
-            std::string remoteItemPath = remoteItem->GetPath();
-            loadRemoteItems(remoteItemPath, remoteDirectoryItems, rootPathScraperScanSettings, contentType_AsDefinedInScraper);
+          std::string remoteItemPath = remoteItem->GetPath();
+          loadRemoteItems(remoteItemPath, remoteDirectoryItems, rootPathScraperScanSettings, contentType_AsDefinedInScraper);
+        }
+      } else { // For other media types, it's the reverse: we only store files
+        if (remoteItem->m_bIsFolder)
+        {
+          if(rootPathScraperScanSettings.recurse > 0 ) {
+            if( isPathAllowedForScan(strDirectory, rootPathScraperScanSettings, contentType_AsDefinedInScraper) ) {
+              std::string remoteItemPath = remoteItem->GetPath();
+              loadRemoteItems(remoteItemPath, remoteDirectoryItems, rootPathScraperScanSettings, contentType_AsDefinedInScraper);
+            }
           }
         }
-      }
-      else {
-          // remoteItem->SetScraperMediaType(contentType_AsDefinedInScraper);
-          remoteDirectoryItems.Add(remoteItem); //push_back
+        else {
+            // remoteItem->SetScraperMediaType(contentType_AsDefinedInScraper);
+            remoteDirectoryItems.Add(remoteItem); //push_back
+        }
       }
     }
   }
@@ -499,7 +506,9 @@ namespace KODI::VIDEO
 
         // TODO: if in DB but "HasNoMedia(item->GetPath())", need to remove it from DB
 
-        if(!remoteItem->m_bIsFolder) { // if item is not a folder, it's a file we want to scan
+        if( (pathContent.contentType_AsDefinedInScraper == CONTENT_TVSHOWS && remoteItem->m_bIsFolder) //For TV shows, we only scan folders
+             ||
+             !remoteItem->m_bIsFolder) { // if item is not a folder, it's a file we want to scan
 
           // Test if video file is already in DB or not:
           bool isVideoAlreadyInDB = false;
