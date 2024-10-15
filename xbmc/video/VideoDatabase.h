@@ -1107,6 +1107,7 @@ public:
   bool GetDefaultVersionForVideo(VideoDbContentType itemType, int mediaId, CFileItem& item);
   bool UpdateAssetsOwner(const std::string& mediaType, int dbIdSource, int dbIdTarget);
 
+  int GetMovieIDByPath(const std::string& strMovieFilePath);
   int GetMovieId(const std::string& strFilenameAndPath);
   std::string GetMovieTitle(int idMovie);
   void GetSameVideoItems(const CFileItem& item, CFileItemList& items);

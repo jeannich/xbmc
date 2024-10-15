@@ -128,34 +128,102 @@ namespace KODI::VIDEO
       // result in unexpected behaviour.
       m_bCanInterrupt = false;
 
-      bool bCancelled = false;
-      while (!bCancelled && !m_pathsToScan.empty())
+      //CJ---------------------------------------------------------
+      if (m_handle)
+        m_handle->SetTitle("Listing media files ...");
+
+      // Load all remote items of all m_pathsToScan and store them into one list
+      //m_pathsToScan is a list of ROOT path mixed among all media libraries so content type and browsing rules could differ
+      std::vector<SourcePathContent> _pathsContent;
+      // std::vector<CFileItemList> remoteDirectoryItems;
+      CFileItemList remoteDirectoryItems[m_pathsToScan.size()];
+      int nbRemoteDirectoryItems = 0;
+
+      for (const auto& rootPathToScan : m_pathsToScan)
+      //for (int i = 0; i < m_pathsToScan.size(); ++i)
       {
-        /*
-         * A copy of the directory path is used because the path supplied is
-         * immediately removed from the m_pathsToScan set in DoScan(). If the
-         * reference points to the entry in the set a null reference error
-         * occurs.
-         */
-        std::string directory = *m_pathsToScan.begin();
-        if (m_bStop)
-        {
-          bCancelled = true;
+        //const std::string rootPathToScan = m_pathsToScan[i];
+
+        //-----------------------
+        // Load root path properties from scraper settings
+        //-----------------------
+        bool foundDirectly = false;
+        bool bSkip = false;
+        SScanSettings rootPathScraperScanSettings;
+        ScraperPtr info = m_database.GetScraperForPath(rootPathToScan, rootPathScraperScanSettings, foundDirectly);
+        CONTENT_TYPE contentType_AsDefinedInScraper = info ? info->Content() : CONTENT_NONE;
+        //-----------------------
+
+
+        if( isPathAllowedForScan(rootPathToScan, rootPathScraperScanSettings, contentType_AsDefinedInScraper)) {
+          /*CFileItemList remoteDirectoryItems;
+          loadRemoteItems(rootPathToScan, remoteDirectoryItems, rootPathScraperScanSettings, contentType_AsDefinedInScraper);
+          _pathsContent.push_back({rootPathToScan, rootPathScraperScanSettings, contentType_AsDefinedInScraper, remoteDirectoryItems});
+          */
+
+          loadRemoteItems(rootPathToScan, remoteDirectoryItems[nbRemoteDirectoryItems++], rootPathScraperScanSettings, contentType_AsDefinedInScraper);
+
+          _pathsContent.push_back({rootPathToScan, rootPathScraperScanSettings, contentType_AsDefinedInScraper, remoteDirectoryItems[nbRemoteDirectoryItems-1]});
+
+          //We use the 'path' of CFileItemList to store its root-path-to-scan
+          remoteDirectoryItems[nbRemoteDirectoryItems-1].SetPath(rootPathToScan);
         }
-        else if (!CDirectory::Exists(directory))
-        {
-          /*
-           * Note that this will skip clean (if m_bClean is enabled) if the directory really
-           * doesn't exist rather than a NAS being switched off.  A manual clean from settings
-           * will still pick up and remove it though.
-           */
-          CLog::Log(LOGWARNING, "{} directory '{}' does not exist - skipping scan{}.", __FUNCTION__,
-                    CURL::GetRedacted(directory), m_bClean ? " and clean" : "");
-          m_pathsToScan.erase(m_pathsToScan.begin());
-        }
-        else if (!DoScan(directory))
-          bCancelled = true;
       }
+
+        //       std::string path;
+        // SScanSettings rootPathScraperScanSettings;
+        // CONTENT_TYPE contentType_AsDefinedInScraper;
+        // CFileItemList items;
+
+
+      m_pathsToScan.clear();
+      DoScan(_pathsContent);
+      //CJ---------------------------------------------------------
+
+
+      bool bCancelled = false;
+      // while (!bCancelled && !m_pathsToScan.empty())
+      // {
+      //   /*
+      //    * A copy of the directory path is used because the path supplied is
+      //    * immediately removed from the m_pathsToScan set in DoScan(). If the
+      //    * reference points to the entry in the set a null reference error
+      //    * occurs.
+      //    */
+      //   std::string directory = *m_pathsToScan.begin();
+      //   if (m_bStop)
+      //   {
+      //     bCancelled = true;
+      //   }
+      //   else if (!CDirectory::Exists(directory))
+      //   {
+      //     /*
+      //      * Note that this will skip clean (if m_bClean is enabled) if the directory really
+      //      * doesn't exist rather than a NAS being switched off.  A manual clean from settings
+      //      * will still pick up and remove it though.
+      //      */
+      //     CLog::Log(LOGWARNING, "{} directory '{}' does not exist - skipping scan{}.", __FUNCTION__,
+      //               CURL::GetRedacted(directory), m_bClean ? " and clean" : "");
+      //     m_pathsToScan.erase(m_pathsToScan.begin());
+      //   }
+      //   else {
+      //     //-----------------------
+      //     // Load root path properties from scraper settings
+      //     //-----------------------
+      //     bool foundDirectly = false;
+      //     bool bSkip = false;
+      //     SScanSettings rootPathScraperScanSettings;
+      //     ScraperPtr info = m_database.GetScraperForPath(directory, rootPathScraperScanSettings, foundDirectly);
+      //     CONTENT_TYPE contentType_AsDefinedInScraper = info ? info->Content() : CONTENT_NONE;
+      //     //-----------------------
+
+      //     if( isPathAllowedForScan(directory, rootPathScraperScanSettings, contentType_AsDefinedInScraper) ) {
+      //       if (!DoScan(directory, rootPathScraperScanSettings, contentType_AsDefinedInScraper))
+      //         bCancelled = true;
+      //       // loadRemoteItems(directory, remoteDirectoryItems, rootPathScraperScanSettings, contentType_AsDefinedInScraper);
+      //     }
+      //   }
+      // }
 
       if (!bCancelled)
       {
@@ -244,11 +312,113 @@ namespace KODI::VIDEO
     CServiceBroker::GetGUI()->GetWindowManager().SendThreadMessage(msg);
   }
 
-  bool CVideoInfoScanner::DoScan(const std::string& strDirectory)
+
+
+  /*void CVideoInfoScanner::loadRemoteItems(const std::string& strDirectory, CFileItemList& remoteDirectoryItems)
+  {
+    //CFileItemList remoteDirectoryItems;
+    CDirectory::GetDirectory(strDirectory, remoteDirectoryItems, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(), DIR_FLAG_DEFAULTS);
+      // GetDirectory is NOT recursive and will return both folders and movies, need to split
+
+    for (const auto& remoteItem : remoteDirectoryItems)
+    {
+      if(remoteItem->m_bIsFolder) {
+        std::string remoteItemPath = remoteItem->GetPath();
+
+        loadRemoteItems(remoteItemPath, remoteDirectoryItems);
+      }
+    }
+  }*/
+
+
+  void CVideoInfoScanner::loadRemoteItems(const std::string& strDirectory, CFileItemList& remoteDirectoryItems, SScanSettings rootPathScraperScanSettings, CONTENT_TYPE contentType_AsDefinedInScraper)
+  {
+    /*if (m_handle) {
+      m_handle->SetText(strDirectory);
+    }*/
+    if (contentType_AsDefinedInScraper == CONTENT_NONE)
+      return;
+
+    CFileItemList nonRecursiveRemoteItems;
+    CDirectory::GetDirectory(strDirectory, nonRecursiveRemoteItems, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(), DIR_FLAG_DEFAULTS);
+      // GetDirectory is NOT recursive and will return both folders and movies, need to split
+
+    for (const auto& remoteItem : nonRecursiveRemoteItems)
+    {
+      if (m_handle) {
+        m_handle->SetText(remoteItem->GetMovieName(true));
+      }
+
+      /*
+      if(contentType_AsDefinedInScraper == CONTENT_TVSHOWS) {
+        // Store only folders in case of TV_SHOWS
+      }*/
+
+      if (remoteItem->m_bIsFolder)
+      {
+        if(rootPathScraperScanSettings.recurse > 0 ) {
+          if( isPathAllowedForScan(strDirectory, rootPathScraperScanSettings, contentType_AsDefinedInScraper) ) {
+            std::string remoteItemPath = remoteItem->GetPath();
+            loadRemoteItems(remoteItemPath, remoteDirectoryItems, rootPathScraperScanSettings, contentType_AsDefinedInScraper);
+          }
+        }
+      }
+      else {
+          // remoteItem->SetScraperMediaType(contentType_AsDefinedInScraper);
+          remoteDirectoryItems.Add(remoteItem); //push_back
+      }
+    }
+  }
+
+
+
+  // Apply filtering rules to exclude this strDirectory scan on different conditions
+  bool CVideoInfoScanner::isPathAllowedForScan(const std::string& strDirectory, SScanSettings rootPathScraperScanSettings, CONTENT_TYPE contentType_AsDefinedInScraper)
+  {
+    //---------------------------------
+    // Filtering rules to exclude this strDirectory scan on different conditions
+    //---------------------------------
+    // If content is 'CONTENT_NONE' or update is disabled for this path
+    if (rootPathScraperScanSettings.noupdate)  //'noupdate' is true when option "Exclude path from library updates" is checked
+      return false;
+    bool ignoreFolder = !m_scanAll && rootPathScraperScanSettings.noupdate;
+    if (contentType_AsDefinedInScraper == CONTENT_NONE || ignoreFolder)
+      return false;
+
+    // Discard path matching exclusion regex
+    const std::vector<std::string> &regexpExcludeRules = contentType_AsDefinedInScraper == CONTENT_TVSHOWS ?
+        CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_tvshowExcludeFromScanRegExps
+      : CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_moviesExcludeFromScanRegExps;
+    if (CUtil::ExcludeFileOrFolder(strDirectory, regexpExcludeRules))
+      return false; // return true means 'strDirectory' matches one of the excluded regex, so it is excluded, so we skip its scan
+
+    // Skip folders where .nomedia file is present
+    if (HasNoMedia(strDirectory))
+      return false;
+
+    // Skip if path is dedicated to a plugin
+    if (URIUtils::IsPlugin(strDirectory) && !CPluginDirectory::IsMediaLibraryScanningAllowed(TranslateContent(contentType_AsDefinedInScraper), strDirectory))
+    {
+      CLog::Log(LOGINFO, "VideoInfoScanner: Plugin '{}' does not support media library scanning for '{}' contentType_AsDefinedInScraper",
+          CURL::GetRedacted(strDirectory), TranslateContent(contentType_AsDefinedInScraper));
+      return false;
+    }
+
+    return true;
+    //---------------------------------
+    // End of filtering rules
+    //---------------------------------
+  }
+
+
+  bool CVideoInfoScanner::DoScan(const std::string& strDirectory){
+    return true;
+  }
+  bool CVideoInfoScanner::DoScan(const std::vector<SourcePathContent>& _pathsContent)
   {
     if (m_handle)
     {
-      m_handle->SetText(g_localizeStrings.Get(20415));
+      m_handle->SetTitle(g_localizeStrings.Get(20415));  //"Scanning for new content"
     }
 
     /*
@@ -256,194 +426,341 @@ namespace KODI::VIDEO
      * the check for file or folder exclusion to prevent an infinite while loop
      * in Process().
      */
-    std::set<std::string>::iterator it = m_pathsToScan.find(strDirectory);
+    /*std::set<std::string>::iterator it = m_pathsToScan.find(strDirectory);
     if (it != m_pathsToScan.end())
-      m_pathsToScan.erase(it);
+      m_pathsToScan.erase(it);*/
 
-    // load subfolder
-    CFileItemList items;
-    bool foundDirectly = false;
-    bool bSkip = false;
 
-    SScanSettings settings;
-    ScraperPtr info = m_database.GetScraperForPath(strDirectory, settings, foundDirectly);
-    CONTENT_TYPE content = info ? info->Content() : CONTENT_NONE;
+    // Load path properties from scraper settings
+    // bool foundDirectly = false;
+    // bool bSkip = false;
+    // SScanSettings scraperScanSettings;
+    // ScraperPtr info = m_database.GetScraperForPath(strDirectory, scraperScanSettings, foundDirectly);
+    // CONTENT_TYPE contentType_AsDefinedInScraper = info ? info->Content() : CONTENT_NONE;
 
-    // exclude folders that match our exclude regexps
-    const std::vector<std::string> &regexps = content == CONTENT_TVSHOWS ? CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_tvshowExcludeFromScanRegExps
-                                                         : CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_moviesExcludeFromScanRegExps;
 
-    if (CUtil::ExcludeFileOrFolder(strDirectory, regexps))
-      return true;
 
-    if (HasNoMedia(strDirectory))
-      return true;
 
-    bool ignoreFolder = !m_scanAll && settings.noupdate;
-    if (content == CONTENT_NONE || ignoreFolder)
-      return true;
 
-    if (URIUtils::IsPlugin(strDirectory) && !CPluginDirectory::IsMediaLibraryScanningAllowed(TranslateContent(content), strDirectory))
-    {
-      CLog::Log(
-          LOGINFO,
-          "VideoInfoScanner: Plugin '{}' does not support media library scanning for '{}' content",
-          CURL::GetRedacted(strDirectory), TranslateContent(content));
-      return true;
+
+    //**********************************************************************************************************
+    // CJ algo
+    //**********************************************************************************************************
+    /*CFileItemList recursive_remoteDirectoryItems;
+    loadRemoteItems(strDirectory, recursive_remoteDirectoryItems);*/
+
+    /*if (m_handle) {
+      m_handle->SetTitle("Loading media content ...");
+      m_handle->SetText("THIS A TEXT -- test");
+    }*/
+
+    // CFileItemList remoteDirectoryItems;
+    // loadRemoteItems(strDirectory, remoteDirectoryItems);
+    //CDirectory::GetDirectory(strDirectory, remoteDirectoryItems, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(), DIR_FLAG_DEFAULTS);
+      // GetDirectory is NOT recursive and will return both folders and movies, need to split
+
+    //m_handle->SetTitle("Scanning for new elements ...");
+
+    // Calculate total items count (necessary to display a proper progress bar)
+    int totalItems = 0;
+    for (const auto& pathContent : _pathsContent) {
+      totalItems += pathContent.items.Size();
     }
 
-    std::string hash, dbHash;
-    if (content == CONTENT_MOVIES ||content == CONTENT_MUSICVIDEOS)
-    {
-      if (m_handle)
+
+    int itemsChecked = 0;
+    for (const auto& pathContent : _pathsContent) {
+      const CFileItemList& remoteDirectoryItems = pathContent.items;
+
+      for (int i = 0; i < remoteDirectoryItems.Size(); ++i)
       {
-        int str = content == CONTENT_MOVIES ? 20317:20318;
-        m_handle->SetTitle(StringUtils::Format(g_localizeStrings.Get(str), info->Name()));
-      }
+        CFileItemPtr remoteItem = remoteDirectoryItems[i];
+        std::string remoteItemPath = remoteItem->GetPath();
 
-      std::string fastHash;
-      if (CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_bVideoLibraryUseFastHash && !URIUtils::IsPlugin(strDirectory))
-        fastHash = GetFastHash(strDirectory, regexps);
 
-      if (m_database.GetPathHash(strDirectory, dbHash) && !fastHash.empty() && StringUtils::EqualsNoCase(fastHash, dbHash))
-      { // fast hashes match - no need to process anything
-        hash = fastHash;
-      }
-      else
-      { // need to fetch the folder
-        CDirectory::GetDirectory(strDirectory, items, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(),
-                                 DIR_FLAG_DEFAULTS);
-        // do not consider inner folders with .nomedia
-        items.erase(std::remove_if(items.begin(), items.end(),
-                                   [this](const CFileItemPtr& item) {
-                                     return item->m_bIsFolder && HasNoMedia(item->GetPath());
-                                   }),
-                    items.end());
-        items.Stack();
+        // Update progress bar only for root items (to prevent constant reset when entering a sub folder)
+        if (m_handle /*&& !remoteItem->IsParentFolder()*/) {
+          itemsChecked++;
+          m_handle->SetPercentage(itemsChecked*100.f/totalItems);         //remoteDirectoryItems.Size());
+          //m_handle->SetText(remoteItemPath);  //pItem->GetMovieName(bDirNames));
+          //m_handle->SetTitle(StringUtils::Format(g_localizeStrings.Get(20319), info->Name()));
+          //m_handle->SetTitle(remoteItemPath);
 
-        // check whether to re-use previously computed fast hash
-        if (!CanFastHash(items, regexps) || fastHash.empty())
-          GetPathHash(items, hash);
-        else
-          hash = fastHash;
-      }
 
-      if (StringUtils::EqualsNoCase(hash, dbHash))
-      { // hash matches - skipping
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '{}' due to no change{}",
-                  CURL::GetRedacted(strDirectory), !fastHash.empty() ? " (fasthash)" : "");
-        bSkip = true;
-      }
-      else if (hash.empty())
-      { // directory empty or non-existent - add to clean list and skip
-        CLog::Log(LOGDEBUG,
-                  "VideoInfoScanner: Skipping dir '{}' as it's empty or doesn't exist - adding to "
-                  "clean list",
-                  CURL::GetRedacted(strDirectory));
-        if (m_bClean)
-          m_pathsToClean.insert(m_database.GetPathId(strDirectory));
-        bSkip = true;
-      }
-      else if (dbHash.empty())
-      { // new folder - scan
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Scanning dir '{}' as not in the database",
-                  CURL::GetRedacted(strDirectory));
-      }
-      else
-      { // hash changed - rescan
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: Rescanning dir '{}' due to change ({} != {})",
-                  CURL::GetRedacted(strDirectory), dbHash, hash);
-      }
-    }
-    else if (content == CONTENT_TVSHOWS)
-    {
-      if (m_handle)
-        m_handle->SetTitle(StringUtils::Format(g_localizeStrings.Get(20319), info->Name()));
+          m_handle->SetText(remoteItem->GetMovieName(true));
 
-      if (foundDirectly && !settings.parent_name_root)
-      {
-        CDirectory::GetDirectory(strDirectory, items, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(),
-                                 DIR_FLAG_DEFAULTS);
-        items.SetPath(strDirectory);
-        GetPathHash(items, hash);
-        bSkip = true;
-        if (!m_database.GetPathHash(strDirectory, dbHash) || !StringUtils::EqualsNoCase(dbHash, hash))
-          bSkip = false;
-        else
-          items.Clear();
-      }
-      else
-      {
-        CFileItemPtr item(new CFileItem(URIUtils::GetFileName(strDirectory)));
-        item->SetPath(strDirectory);
-        item->m_bIsFolder = true;
-        items.Add(item);
-        items.SetPath(URIUtils::GetParentPath(item->GetPath()));
-      }
-    }
-    bool foundSomething = false;
-    if (!bSkip)
-    {
-      foundSomething = RetrieveVideoInfo(items, settings.parent_name_root, content);
-      if (foundSomething)
-      {
-        if (!m_bStop && (content == CONTENT_MOVIES || content == CONTENT_MUSICVIDEOS))
-        {
-          m_database.SetPathHash(strDirectory, hash);
-          if (m_bClean)
-            m_pathsToClean.insert(m_database.GetPathId(strDirectory));
-          CLog::Log(LOGDEBUG, "VideoInfoScanner: Finished adding information from dir {}",
-                    CURL::GetRedacted(strDirectory));
-        }
-      }
-      else
-      {
-        if (m_bClean)
-          m_pathsToClean.insert(m_database.GetPathId(strDirectory));
-        CLog::Log(LOGDEBUG, "VideoInfoScanner: No (new) information was found in dir {}",
-                  CURL::GetRedacted(strDirectory));
-      }
-    }
-    else if (!StringUtils::EqualsNoCase(hash, dbHash) && (content == CONTENT_MOVIES || content == CONTENT_MUSICVIDEOS))
-    { // update the hash either way - we may have changed the hash to a fast version
-      m_database.SetPathHash(strDirectory, hash);
-    }
+          /*(remoteItem->GetMovieName(true));   ///'a_seedbox' for all root items
+          m_handle->SetText(remoteItemPath);*/
 
-    if (m_handle)
-      OnDirectoryScanned(strDirectory);
-
-    for (int i = 0; i < items.Size(); ++i)
-    {
-      CFileItemPtr pItem = items[i];
-
-      if (m_bStop)
-        break;
-
-      // add video extras to library
-      if (foundSomething && !m_ignoreVideoExtras && IsVideoExtrasFolder(*pItem))
-      {
-        if (AddVideoExtras(items, content, pItem->GetPath()))
-        {
-          CLog::Log(LOGDEBUG, "VideoInfoScanner: Finished adding video extras from dir {}",
-                    CURL::GetRedacted(pItem->GetPath()));
+          //sleep for a while
+          //std::this_thread::sleep_for(std::chrono::milliseconds(250));
         }
 
-        // no further processing required
-        continue;
-      }
 
-      // if we have a directory item (non-playlist) we then recurse into that folder
-      // do not recurse for tv shows - we have already looked recursively for episodes
-      if (pItem->m_bIsFolder && !pItem->IsParentFolder() && !PLAYLIST::IsPlayList(*pItem) &&
-          settings.recurse > 0 && content != CONTENT_TVSHOWS)
-      {
-        if (!DoScan(pItem->GetPath()))
-        {
-          m_bStop = true;
+        // TODO: if in DB but "HasNoMedia(item->GetPath())", need to remove it from DB
+
+        if(!remoteItem->m_bIsFolder) { // if item is not a folder, it's a file we want to scan
+
+          // Test if video file is already in DB or not:
+          bool isVideoAlreadyInDB = false;
+            //isVideoAlreadyInDB = m_database.GetMovieIDByPath(remoteItemPath) != -1;
+            //isVideoAlreadyInDB = m_database.GetMovieId(remoteItemPath) != -1;
+          switch (pathContent.contentType_AsDefinedInScraper)
+          {
+            case CONTENT_MOVIES:
+              isVideoAlreadyInDB = m_database.HasMovieInfo(remoteItemPath);
+              break;
+            case CONTENT_MUSICVIDEOS:
+              isVideoAlreadyInDB = m_database.HasMusicVideoInfo(remoteItemPath);
+              break;
+            case CONTENT_TVSHOWS:
+              isVideoAlreadyInDB = m_database.HasTvShowInfo(remoteItemPath);
+              break;
+          }
+
+          if (!isVideoAlreadyInDB) // Remote movie not found in local DB: need to add it
+          {
+            CLog::Log(LOGDEBUG, "VideoInfoScanner: Scanning item '{}' as not in the database", CURL::GetRedacted(remoteItemPath));
+
+            //-----------------------------------
+            // Add the new movie to DB
+            //-----------------------------------
+            //MEMO: function 'RetrieveVideoInfo' will not only 'retreive' but it will also ADD media info to the DB.
+            //      This function is also SLOW so let's call it only when necessary
+            CFileItemList itemList(pathContent.rootPath);
+            itemList.Add(remoteItem);
+
+            bool foundSomething = RetrieveVideoInfo(itemList, pathContent.rootPathScraperScanSettings.parent_name_root, pathContent.contentType_AsDefinedInScraper);
+            if (foundSomething)
+            {
+              CLog::Log(LOGDEBUG, "VideoInfoScanner: media info added for {}", CURL::GetRedacted(remoteItemPath));
+              /*if (!m_bStop && (contentType_AsDefinedInScraper == CONTENT_MOVIES || contentType_AsDefinedInScraper == CONTENT_MUSICVIDEOS))
+              {
+                //m_database.SetPathHash(strDirectory, hash);
+                //if (m_bClean)
+                //  m_pathsToClean.insert(m_database.GetPathId(strDirectory));
+                CLog::Log(LOGDEBUG, "VideoInfoScanner: Finished adding information from dir {}", CURL::GetRedacted(remoteItemPath));
+              }*/
+            } else {
+              CLog::Log(LOGDEBUG, "VideoInfoScanner: Could NOT find media info for {}", CURL::GetRedacted(remoteItemPath));
+            }
+            //-----------------------------------
+            // END of 'Add the new movie to DB'
+            //-----------------------------------
+
+          } else {
+            //m_handle->SetTitle(remoteItem->GetMovieName(true));
+
+            CLog::Log(LOGDEBUG, "VideoInfoScanner: item '{}' is already in the DB, no need to rescan", CURL::GetRedacted(remoteItemPath));
+            // m_bStop = true
+            // return !m_bStop;
+          }
         }
+        /*else {
+          //CLog::Log(LOGDEBUG, "VideoInfoScanner: item '{}' is a folder, need to scan it recursively", CURL::GetRedacted(remoteItemPath));
+          // if we have a directory item (non-playlist) we then recurse into that folder
+          // do not recurse for tv shows - we have already looked recursively for episodes
+          if( !remoteItem->IsParentFolder() && !PLAYLIST::IsPlayList(*remoteItem) && scraperScanSettings.recurse > 0 && contentType_AsDefinedInScraper != CONTENT_TVSHOWS)
+          {
+            if (!DoScan(remoteItemPath))
+            {
+              m_bStop = true;
+            }
+          }
+        }*/
       }
     }
-    return !m_bStop;
+    return true;
+    //**********************************************************************************************************
+    // << end of CJ algo
+    //**********************************************************************************************************
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    // //---------------------------------
+    // // Hash handling (supposidely to speedup things...)
+    // //---------------------------------
+    // std::string hash, dbHash;
+    // if (contentType_AsDefinedInScraper == CONTENT_MOVIES || contentType_AsDefinedInScraper == CONTENT_MUSICVIDEOS)
+    // {
+    //   if (m_handle)
+    //   {
+    //     int str = contentType_AsDefinedInScraper == CONTENT_MOVIES ? 20317:20318;
+    //     m_handle->SetTitle(StringUtils::Format(g_localizeStrings.Get(str), info->Name()));
+    //   }
+
+
+    //   //*****************************************************
+    //   // HASH handling (using 'GetPathHash', calculate the hash of DB content and remote content based on few metadatas (path, date changed, ...) ; if identical: no need to rescan)
+    //   //*****************************************************
+    //   std::string remoteDirectoryFastHash;
+    //   if (CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_bVideoLibraryUseFastHash && !URIUtils::IsPlugin(strDirectory))
+    //     remoteDirectoryFastHash = GetFastHash(strDirectory, regexpExcludeRules);  // TODO clarify what this does
+
+    //   bool dbContentHashCalculationSuccessed = m_database.GetPathHash(strDirectory, dbHash); // Calculate here 'dbHash'
+    //   if ( dbContentHashCalculationSuccessed && !remoteDirectoryFastHash.empty() && StringUtils::EqualsNoCase(remoteDirectoryFastHash, dbHash))
+    //   {
+    //     // db hash and remote content fast hash match so no need to rescan remote directory
+    //     hash = remoteDirectoryFastHash;
+    //   }
+    //   else {
+    //     //*******************************
+    //     // Fetch remote content
+    //     //*******************************
+    //     CDirectory::GetDirectory(strDirectory, remoteDirectoryItems, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(), DIR_FLAG_DEFAULTS);
+    //     // Exclude from "remoteDirectoryItems", the path that has .nomedia file in it.  TODO: this could be postponed ; and it's SLOW
+    //     remoteDirectoryItems.erase(std::remove_if(remoteDirectoryItems.begin(), remoteDirectoryItems.end(),
+    //                                [this](const CFileItemPtr& item) {
+    //                                  return item->m_bIsFolder && HasNoMedia(item->GetPath());
+    //                                }),
+    //                 remoteDirectoryItems.end());
+    //     remoteDirectoryItems.Stack();
+
+
+    //     // check whether to re-use previously computed fast hash
+    //     if (remoteDirectoryFastHash.empty()  ||    !CanFastHash(remoteDirectoryItems, regexpExcludeRules))
+    //       GetPathHash(remoteDirectoryItems, hash);
+    //     else
+    //       hash = remoteDirectoryFastHash; // TODO: rename 'hash' in 'remoteDirContentHash'
+    //   }
+
+
+
+    //   if (StringUtils::EqualsNoCase(hash, dbHash))
+    //   { // hash matches - skipping
+    //     CLog::Log(LOGDEBUG, "VideoInfoScanner: Skipping dir '{}' due to no change{}",
+    //               CURL::GetRedacted(strDirectory), !remoteDirectoryFastHash.empty() ? " (fasthash)" : "");
+    //     bSkip = true;
+    //   }
+    //   else if (hash.empty())
+    //   { // directory empty or non-existent - add to clean list and skip
+    //     CLog::Log(LOGDEBUG,
+    //               "VideoInfoScanner: Skipping dir '{}' as it's empty or doesn't exist - adding to "
+    //               "clean list",
+    //               CURL::GetRedacted(strDirectory));
+    //     if (m_bClean)
+    //       m_pathsToClean.insert(m_database.GetPathId(strDirectory));
+    //     bSkip = true;
+    //   }
+    //   else if (dbHash.empty())
+    //   { // new folder - scan
+    //     CLog::Log(LOGDEBUG, "VideoInfoScanner: Scanning dir '{}' as not in the database",
+    //               CURL::GetRedacted(strDirectory));
+    //   }
+    //   else
+    //   { // hash changed - rescan
+    //     CLog::Log(LOGDEBUG, "VideoInfoScanner: Rescanning dir '{}' due to change ({} != {})",
+    //               CURL::GetRedacted(strDirectory), dbHash, hash);
+    //   }
+    // }
+    // else if (contentType_AsDefinedInScraper == CONTENT_TVSHOWS)
+    // {
+    //   if (m_handle)
+    //     m_handle->SetTitle(StringUtils::Format(g_localizeStrings.Get(20319), info->Name()));
+
+    //   if (foundDirectly && !scraperScanSettings.parent_name_root)
+    //   {
+    //     CDirectory::GetDirectory(strDirectory, remoteDirectoryItems, CServiceBroker::GetFileExtensionProvider().GetVideoExtensions(),
+    //                              DIR_FLAG_DEFAULTS);
+    //     remoteDirectoryItems.SetPath(strDirectory);
+    //     GetPathHash(remoteDirectoryItems, hash);
+    //     bSkip = true;
+    //     if (!m_database.GetPathHash(strDirectory, dbHash) || !StringUtils::EqualsNoCase(dbHash, hash))
+    //       bSkip = false;
+    //     else
+    //       remoteDirectoryItems.Clear();
+    //   }
+    //   else
+    //   {
+    //     CFileItemPtr item(new CFileItem(URIUtils::GetFileName(strDirectory)));
+    //     item->SetPath(strDirectory);
+    //     item->m_bIsFolder = true;
+    //     remoteDirectoryItems.Add(item);
+    //     remoteDirectoryItems.SetPath(URIUtils::GetParentPath(item->GetPath()));
+    //   }
+    // }
+
+
+    // // "bSkip" is the conclusion of above hash analysis. "true" means that hash check deduced this strDirectory folder does not need to be scanned
+    // bool foundSomething = false;
+    // if (!bSkip)
+    // { // Below function is wayyyy to SLOW
+    //   foundSomething = RetrieveVideoInfo(remoteDirectoryItems, scraperScanSettings.parent_name_root, contentType_AsDefinedInScraper);
+    //   if (foundSomething)
+    //   {
+    //     if (!m_bStop && (contentType_AsDefinedInScraper == CONTENT_MOVIES || contentType_AsDefinedInScraper == CONTENT_MUSICVIDEOS))
+    //     {
+    //       m_database.SetPathHash(strDirectory, hash);
+    //       if (m_bClean)
+    //         m_pathsToClean.insert(m_database.GetPathId(strDirectory));
+    //       CLog::Log(LOGDEBUG, "VideoInfoScanner: Finished adding information from dir {}",
+    //                 CURL::GetRedacted(strDirectory));
+    //     }
+    //   }
+    //   else
+    //   {
+    //     if (m_bClean)
+    //       m_pathsToClean.insert(m_database.GetPathId(strDirectory));
+    //     CLog::Log(LOGDEBUG, "VideoInfoScanner: No (new) information was found in dir {}",
+    //               CURL::GetRedacted(strDirectory));
+    //   }
+    // }
+    // else if (!StringUtils::EqualsNoCase(hash, dbHash) && (contentType_AsDefinedInScraper == CONTENT_MOVIES || contentType_AsDefinedInScraper == CONTENT_MUSICVIDEOS))
+    // { // update the hash either way - we may have changed the hash to a fast version
+    //   m_database.SetPathHash(strDirectory, hash);
+    // }
+
+    // if (m_handle)
+    //   OnDirectoryScanned(strDirectory);
+
+    // for (int i = 0; i < remoteDirectoryItems.Size(); ++i)
+    // {
+    //   CFileItemPtr pItem = remoteDirectoryItems[i];
+
+    //   if (m_bStop)
+    //     break;
+
+    //   // add video extras to library
+    //   if (foundSomething && !m_ignoreVideoExtras && IsVideoExtrasFolder(*pItem))
+    //   {
+    //     if (AddVideoExtras(remoteDirectoryItems, contentType_AsDefinedInScraper, pItem->GetPath()))
+    //     {
+    //       CLog::Log(LOGDEBUG, "VideoInfoScanner: Finished adding video extras from dir {}",
+    //                 CURL::GetRedacted(pItem->GetPath()));
+    //     }
+
+    //     // no further processing required
+    //     continue;
+    //   }
+
+    //   // if we have a directory item (non-playlist) we then recurse into that folder
+    //   // do not recurse for tv shows - we have already looked recursively for episodes
+    //   if (pItem->m_bIsFolder && !pItem->IsParentFolder() && !PLAYLIST::IsPlayList(*pItem) &&
+    //       scraperScanSettings.recurse > 0 && contentType_AsDefinedInScraper != CONTENT_TVSHOWS)
+    //   {
+    //     if (!DoScan(pItem->GetPath()))
+    //     {
+    //       m_bStop = true;
+    //     }
+    //   }
+    // }
+    // return !m_bStop;
   }
 
   bool CVideoInfoScanner::RetrieveVideoInfo(CFileItemList& items, bool bDirNames, CONTENT_TYPE content, bool useLocal, CScraperUrl* pURL, bool fetchEpisodes, CGUIDialogProgress* pDlgProgress)
@@ -469,6 +786,10 @@ namespace KODI::VIDEO
     {
       CFileItemPtr pItem = items[i];
 
+      // TODO: might be same as in DoSCan
+      //if (m_handle)
+      //  m_handle->SetPercentage(i*100.f/items.Size());
+
       // we do this since we may have a override per dir
       ScraperPtr info2 = m_database.GetScraperForPath(pItem->m_bIsFolder ? pItem->GetPath() : items.GetPath());
       if (!info2) // skip
@@ -479,15 +800,17 @@ namespace KODI::VIDEO
         continue;
 
       // Discard all exclude files defined by regExExclude
-      if (CUtil::ExcludeFileOrFolder(pItem->GetPath(), (content == CONTENT_TVSHOWS) ? CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_tvshowExcludeFromScanRegExps
+      // TODO - CJ: probably not necessary anymore
+      if (CUtil::ExcludeFileOrFolder(pItem->GetPath(), (content == CONTENT_TVSHOWS) ?
+          CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_tvshowExcludeFromScanRegExps
                                                                     : CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_moviesExcludeFromScanRegExps))
         continue;
 
-      if (info2->Content() == CONTENT_MOVIES || info2->Content() == CONTENT_MUSICVIDEOS)
+      /*if (info2->Content() == CONTENT_MOVIES || info2->Content() == CONTENT_MUSICVIDEOS)
       {
         if (m_handle)
           m_handle->SetPercentage(i*100.f/items.Size());
-      }
+      }*/
 
       // clear our scraper cache
       info2->ClearCache();
@@ -495,7 +818,7 @@ namespace KODI::VIDEO
       INFO_RET ret = INFO_CANCELLED;
       if (info2->Content() == CONTENT_TVSHOWS)
         ret = RetrieveInfoForTvShow(pItem.get(), bDirNames, info2, useLocal, pURL, fetchEpisodes, pDlgProgress);
-      else if (info2->Content() == CONTENT_MOVIES)
+      else if (info2->Content() == CONTENT_MOVIES) // if (pItem->m_bIsFolder 
         ret = RetrieveInfoForMovie(pItem.get(), bDirNames, info2, useLocal, pURL, pDlgProgress);
       else if (info2->Content() == CONTENT_MUSICVIDEOS)
         ret = RetrieveInfoForMusicVideo(pItem.get(), bDirNames, info2, useLocal, pURL, pDlgProgress);
@@ -506,6 +829,7 @@ namespace KODI::VIDEO
         FoundSomeInfo = false;
         break;
       }
+
       if (ret == INFO_CANCELLED || ret == INFO_ERROR)
       {
         CLog::Log(LOGWARNING,
@@ -515,7 +839,7 @@ namespace KODI::VIDEO
         FoundSomeInfo = false;
         break;
       }
-      if (ret == INFO_ADDED || ret == INFO_HAVE_ALREADY)
+      else if (ret == INFO_ADDED || ret == INFO_HAVE_ALREADY)
         FoundSomeInfo = true;
       else if (ret == INFO_NOT_FOUND)
       {
@@ -979,7 +1303,7 @@ namespace KODI::VIDEO
   bool CVideoInfoScanner::EnumerateSeriesFolder(CFileItem* item, EPISODELIST& episodeList)
   {
     CFileItemList items;
-    const std::vector<std::string> &regexps = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_tvshowExcludeFromScanRegExps;
+    const std::vector<std::string> &regexpExcludeRules = CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_tvshowExcludeFromScanRegExps;
 
     bool bSkip = false;
 
@@ -1010,7 +1334,7 @@ namespace KODI::VIDEO
         }
       }
       else if (CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_bVideoLibraryUseFastHash)
-        hash = GetRecursiveFastHash(item->GetPath(), regexps);
+        hash = GetRecursiveFastHash(item->GetPath(), regexpExcludeRules);
 
       if (m_database.GetPathHash(item->GetPath(), dbHash) && (allowEmptyHash || !hash.empty()) && StringUtils::EqualsNoCase(dbHash, hash))
       {
@@ -1135,7 +1459,7 @@ namespace KODI::VIDEO
         continue;
 
       // Discard all exclude files defined by regExExcludes
-      if (CUtil::ExcludeFileOrFolder(items[i]->GetPath(), regexps))
+      if (CUtil::ExcludeFileOrFolder(items[i]->GetPath(), regexpExcludeRules))
         continue;
 
       /*
@@ -1936,8 +2260,8 @@ namespace KODI::VIDEO
         pDlgProgress->SetPercentage((int)((float)(iCurr++)/iMax*100));
         pDlgProgress->Progress();
       }
-      if (m_handle)
-        m_handle->SetPercentage(100.f*iCurr++/iMax);
+      //if (m_handle)
+      //  m_handle->SetPercentage(100.f*iCurr++/iMax);
 
       if ((pDlgProgress && pDlgProgress->IsCanceled()) || m_bStop)
         return INFO_CANCELLED;
@@ -2225,26 +2549,26 @@ namespace KODI::VIDEO
     return count;
   }
 
-  bool CVideoInfoScanner::CanFastHash(const CFileItemList &items, const std::vector<std::string> &excludes) const
+  bool CVideoInfoScanner::CanFastHash(const CFileItemList &items, const std::vector<std::string> &regexExcludeRules) const
   {
     if (!CServiceBroker::GetSettingsComponent()->GetAdvancedSettings()->m_bVideoLibraryUseFastHash || items.IsPlugin())
       return false;
 
     for (int i = 0; i < items.Size(); ++i)
     {
-      if (items[i]->m_bIsFolder && !CUtil::ExcludeFileOrFolder(items[i]->GetPath(), excludes))
+      if (items[i]->m_bIsFolder && !CUtil::ExcludeFileOrFolder(items[i]->GetPath(), regexExcludeRules))
         return false;
     }
     return true;
   }
 
   std::string CVideoInfoScanner::GetFastHash(const std::string &directory,
-      const std::vector<std::string> &excludes) const
+      const std::vector<std::string> &regexExcludeRules) const
   {
     CDigest digest{CDigest::Type::MD5};
 
-    if (excludes.size())
-      digest.Update(StringUtils::Join(excludes, "|"));
+    if (regexExcludeRules.size())
+      digest.Update(StringUtils::Join(regexExcludeRules, "|"));
 
     struct __stat64 buffer;
     if (XFILE::CFile::Stat(directory, &buffer) == 0)
@@ -2262,7 +2586,7 @@ namespace KODI::VIDEO
   }
 
   std::string CVideoInfoScanner::GetRecursiveFastHash(const std::string &directory,
-      const std::vector<std::string> &excludes) const
+      const std::vector<std::string> &regexExcludeRules) const
   {
     CFileItemList items;
     items.Add(std::make_shared<CFileItem>(directory, true));
@@ -2270,8 +2594,8 @@ namespace KODI::VIDEO
 
     CDigest digest{CDigest::Type::MD5};
 
-    if (excludes.size())
-      digest.Update(StringUtils::Join(excludes, "|"));
+    if (regexExcludeRules.size())
+      digest.Update(StringUtils::Join(regexExcludeRules, "|"));
 
     int64_t time = 0;
     for (int i=0; i < items.Size(); ++i)
@@ -2459,7 +2783,7 @@ namespace KODI::VIDEO
   {
     int dbId = -1;
 
-    // get the library item which was added previously with the specified conent type
+    // get the library item which was added previously with the specified content type
     for (const auto& item : items)
     {
       if (content == CONTENT_MOVIES)

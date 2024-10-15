@@ -1262,9 +1262,61 @@ int CVideoDatabase::GetAndFillFileId(CVideoInfoTag& details)
   return details.m_iFileId;
 }
 
-//********************************************************************************************************************************
+//* #############################################################
+/*int CVideoDatabase::RunSQLQuery(const std::string& sqlQuery)
+{
+  if (nullptr == m_pDB)
+    return -1;
+  if (nullptr == m_pDS)
+    return -1;
+
+  m_pDS->query(strSQL);
+}*/
+
+
+
+//CJ###############################################################
+int CVideoDatabase::GetMovieIDByPath(const std::string& strMovieFilePath)
+{
+  try
+  {
+    int idMovie = -1;
+
+    if (m_pDB==nullptr || m_pDS==nullptr)
+      return idMovie;
+
+    // SAMPLE: SELECT idMovie FROM movie WHERE c22='davs://nascarnas.synology.me:24/Download/a_seedbox/Cloverfield%20(2008)%20MULTi%20VFF%202160p%2010bit%204KLight%20HDR%20BluRay%20AC3%205.1%20x265-QTZ.mkv'
+    std::string sqlQuery = PrepareSQL("SELECT idMovie FROM movie WHERE c22='%s'", strMovieFilePath.c_str());
+
+    CLog::Log(LOGDEBUG, LOGDATABASE, "{} ({}), query = {}", __FUNCTION__, CURL::GetRedacted(strMovieFilePath), sqlQuery);
+
+
+    m_pDS->query(sqlQuery);
+    if (m_pDS->num_rows() > 0)
+      idMovie = m_pDS->get_field_value("idMovie").get_asInt();
+
+      // details.m_strPath = m_pDS->fv("path.strPath").get_asString();
+      // std::string strFileName = m_pDS->fv("files.strFilename").get_asString();
+
+    m_pDS->close();
+
+    return idMovie;
+
+  }
+  catch (...)
+  {
+    CLog::Log(LOGERROR, "{} ({}) failed", __FUNCTION__, strMovieFilePath);
+  }
+  return -1;
+}
+//CJ###############################################################
+
+//bool CVideoDatabase::HasMovieInfo(const std::string& strFilenameAndPath)
+
 int CVideoDatabase::GetMovieId(const std::string& strFilenameAndPath)
 {
+  return GetMovieIDByPath(strFilenameAndPath);
+/*
   try
   {
     if (nullptr == m_pDB)
@@ -1280,7 +1332,7 @@ int CVideoDatabase::GetMovieId(const std::string& strFilenameAndPath)
     if (idFile < 0)
     {
       std::string strFile;
-      SplitPath(strFilenameAndPath,strPath,strFile);
+      SplitPath(strFilenameAndPath, strPath, strFile);
 
       // have to join movieinfo table for correct results
       idPath = GetPathId(strPath);
@@ -1316,6 +1368,7 @@ int CVideoDatabase::GetMovieId(const std::string& strFilenameAndPath)
     CLog::Log(LOGERROR, "{} ({}) failed", __FUNCTION__, strFilenameAndPath);
   }
   return -1;
+*/
 }
 
 int CVideoDatabase::GetTvShowId(const std::string& strPath)
