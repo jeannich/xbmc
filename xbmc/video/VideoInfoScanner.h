@@ -106,8 +106,20 @@ namespace VIDEO
     static std::string GetMovieSetInfoFolder(const std::string& setTitle);
 
   protected:
+    struct SourcePathContent {
+        std::string rootPath;
+        SScanSettings rootPathScraperScanSettings;
+        CONTENT_TYPE contentType_AsDefinedInScraper;
+        const CFileItemList& items;
+    };
+
     virtual void Process();
     bool DoScan(const std::string& strDirectory) override;
+    bool DoScan(const std::vector<SourcePathContent>& _pathsContent);
+
+    void loadRemoteItems(const std::string& strDirectory, CFileItemList& remoteDirectoryItems, SScanSettings rootPathScraperScanSettings, CONTENT_TYPE contentType_AsDefinedInScraper);
+
+    bool isPathAllowedForScan(const std::string& strDirectory, SScanSettings rootPathScraperScanSettings, CONTENT_TYPE contentType_AsDefinedInScraper);
 
     INFO_RET RetrieveInfoForTvShow(CFileItem *pItem, bool bDirNames, ADDON::ScraperPtr &scraper, bool useLocal, CScraperUrl* pURL, bool fetchEpisodes, CGUIDialogProgress* pDlgProgress);
     INFO_RET RetrieveInfoForMovie(CFileItem *pItem, bool bDirNames, ADDON::ScraperPtr &scraper, bool useLocal, CScraperUrl* pURL, CGUIDialogProgress* pDlgProgress);
