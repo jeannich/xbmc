@@ -12,14 +12,13 @@
 #include "VideoDatabase.h"
 #include "addons/Scraper.h"
 #include "guilib/GUIListItem.h"
+#include "FileItem.h"
 
 #include <set>
 #include <string>
 #include <vector>
 
 class CRegExp;
-class CFileItem;
-class CFileItemList;
 
 namespace VIDEO
 {
@@ -109,23 +108,26 @@ namespace VIDEO
     struct SourcePathContent
     {
       std::string rootPath;
-      SScanSettings rootPathScraperScanSettings;
-      CONTENT_TYPE contentType_AsDefinedInScraper;
-      const CFileItemList& items;
+      SScanSettings scrapperScanSettings;
+      CONTENT_TYPE contentType;
+      CFileItemList items;
+
+      SourcePathContent(std::string a, SScanSettings b, CONTENT_TYPE c):
+               rootPath(a), scrapperScanSettings(b), contentType(c), items() {};
     };
 
     virtual void Process();
     bool DoScan(const std::string& strDirectory) override;
     bool DoScan(const std::vector<SourcePathContent>& _pathsContent);
 
-    void loadRemoteItems(const std::string& strDirectory,
+    void LoadRemoteItems(const std::string& strDirectory,
                          CFileItemList& remoteDirectoryItems,
-                         SScanSettings rootPathScraperScanSettings,
-                         CONTENT_TYPE contentType_AsDefinedInScraper);
+                         SScanSettings scrapperScanSettings,
+                         CONTENT_TYPE contentType);
 
-    bool isPathAllowedForScan(const std::string& strDirectory,
-                              SScanSettings rootPathScraperScanSettings,
-                              CONTENT_TYPE contentType_AsDefinedInScraper);
+    bool IsPathAllowedForScan(const std::string& strDirectory,
+                              SScanSettings scrapperScanSettings,
+                              CONTENT_TYPE contentType);
 
     INFO_RET RetrieveInfoForTvShow(CFileItem *pItem, bool bDirNames, ADDON::ScraperPtr &scraper, bool useLocal, CScraperUrl* pURL, bool fetchEpisodes, CGUIDialogProgress* pDlgProgress);
     INFO_RET RetrieveInfoForMovie(CFileItem *pItem, bool bDirNames, ADDON::ScraperPtr &scraper, bool useLocal, CScraperUrl* pURL, CGUIDialogProgress* pDlgProgress);

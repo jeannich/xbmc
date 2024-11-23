@@ -122,36 +122,32 @@ namespace VIDEO
       m_bCanInterrupt = false;
 
       if (m_handle)
-        m_handle->SetTitle("Listing media files ...");
+        m_handle->SetTitle(g_localizeStrings.Get(40437));
 
       // List all media files of all 'm_pathsToScan'
       //   INFO: m_pathsToScan may contain path with different library content, so we store their properties into a dedicated struct.
       std::vector<SourcePathContent> _pathsContent;
-      CFileItemList remoteDirectoryItems[m_pathsToScan.size()];
-      int nbRemoteDirectoryItems = 0;
 
       for (const auto& rootPathToScan : m_pathsToScan)
       {
         // Load root path properties from scraper settings:
         bool foundDirectly = false;
-        bool bSkip = false;
         SScanSettings rootPathScraperScanSettings;
-        ScraperPtr info = m_database.GetScraperForPath(rootPathToScan, rootPathScraperScanSettings,
+        const ScraperPtr info = m_database.GetScraperForPath(rootPathToScan, rootPathScraperScanSettings,
                                                        foundDirectly);
-        CONTENT_TYPE contentType_AsDefinedInScraper = info ? info->Content() : CONTENT_NONE;
+        const CONTENT_TYPE contentType = info ? info->Content() : CONTENT_NONE;
 
         // List and store medias:
-        if (isPathAllowedForScan(rootPathToScan, rootPathScraperScanSettings,
-                                 contentType_AsDefinedInScraper))
+        if (IsPathAllowedForScan(rootPathToScan, rootPathScraperScanSettings,
+                                 contentType))
         {
-          loadRemoteItems(rootPathToScan, remoteDirectoryItems[nbRemoteDirectoryItems++],
-                          rootPathScraperScanSettings, contentType_AsDefinedInScraper);
-          _pathsContent.push_back({rootPathToScan, rootPathScraperScanSettings,
-                                   contentType_AsDefinedInScraper,
-                                   remoteDirectoryItems[nbRemoteDirectoryItems - 1]});
+          SourcePathContent pathContent = {rootPathToScan, rootPathScraperScanSettings, contentType};
+          pathContent.items.SetPath(rootPathToScan); // We use the 'path' of CFileItemList to store its root-path-to-scan
 
-          //We use the 'path' of CFileItemList to store its root-path-to-scan
-          remoteDirectoryItems[nbRemoteDirectoryItems - 1].SetPath(rootPathToScan);
+          LoadRemoteItems(rootPathToScan, pathContent.items,
+                          rootPathScraperScanSettings, contentType);
+
+          _pathsContent.push_back(pathContent);
         }
 
         // Support scan cancellation
@@ -251,12 +247,12 @@ namespace VIDEO
     CServiceBroker::GetGUI()->GetWindowManager().SendThreadMessage(msg);
   }
 
-  void CVideoInfoScanner::loadRemoteItems(const std::string& strDirectory,
+  void CVideoInfoScanner::LoadRemoteItems(const std::string& strDirectory,
                                           CFileItemList& remoteDirectoryItems,
                                           SScanSettings rootPathScraperScanSettings,
-                                          CONTENT_TYPE contentType_AsDefinedInScraper)
+                                          CONTENT_TYPE contentType)
   {
-    if (contentType_AsDefinedInScraper == CONTENT_NONE)
+    if (contentType == CONTENT_NONE)
       return;
 
     CFileItemList nonRecursiveRemoteItems;
@@ -278,15 +274,14 @@ namespace VIDEO
       }
 
       // For TV shows we store only the folders
-      if (contentType_AsDefinedInScraper == CONTENT_TVSHOWS)
+      if (contentType == CONTENT_TVSHOWS)
       {
         if (remoteItem->m_bIsFolder)
         {
           remoteDirectoryItems.Add(remoteItem);
 
-          std::string remoteItemPath = remoteItem->GetPath();
-          loadRemoteItems(remoteItemPath, remoteDirectoryItems, rootPathScraperScanSettings,
-                          contentType_AsDefinedInScraper);
+          LoadRemoteItems(remoteItem->GetPath(), remoteDirectoryItems, rootPathScraperScanSettings,
+                          contentType);
         }
       }
       else
@@ -295,12 +290,12 @@ namespace VIDEO
         {
           if (rootPathScraperScanSettings.recurse > 0)
           {
-            if (isPathAllowedForScan(strDirectory, rootPathScraperScanSettings,
-                                     contentType_AsDefinedInScraper))
+            std::string remoteItemPath = remoteItem->GetPath();
+            if (IsPathAllowedForScan(remoteItemPath, rootPathScraperScanSettings,
+                                     contentType))
             {
-              std::string remoteItemPath = remoteItem->GetPath();
-              loadRemoteItems(remoteItemPath, remoteDirectoryItems, rootPathScraperScanSettings,
-                              contentType_AsDefinedInScraper);
+              LoadRemoteItems(remoteItemPath, remoteDirectoryItems, rootPathScraperScanSettings,
+                              contentType);
             }
           }
         }
@@ -313,21 +308,21 @@ namespace VIDEO
   }
 
   // Apply filtering rules to exclude this strDirectory scan on different conditions
-  bool CVideoInfoScanner::isPathAllowedForScan(const std::string& strDirectory,
+  bool CVideoInfoScanner::IsPathAllowedForScan(const std::string& strDirectory,
                                                SScanSettings rootPathScraperScanSettings,
-                                               CONTENT_TYPE contentType_AsDefinedInScraper)
+                                               CONTENT_TYPE contentType)
   {
     // If content is 'CONTENT_NONE' or update is disabled for this path
     if (rootPathScraperScanSettings
             .noupdate) //'noupdate' is true when option "Exclude path from library updates" is checked
       return false;
     bool ignoreFolder = !m_scanAll && rootPathScraperScanSettings.noupdate;
-    if (contentType_AsDefinedInScraper == CONTENT_NONE || ignoreFolder)
+    if (contentType == CONTENT_NONE || ignoreFolder)
       return false;
 
     // Discard path matching exclusion regex
     const std::vector<std::string>& regexpExcludeRules =
-        contentType_AsDefinedInScraper == CONTENT_TVSHOWS ? CServiceBroker::GetSettingsComponent()
+        contentType == CONTENT_TVSHOWS ? CServiceBroker::GetSettingsComponent()
                                                                 ->GetAdvancedSettings()
                                                                 ->m_tvshowExcludeFromScanRegExps
                                                           : CServiceBroker::GetSettingsComponent()
@@ -343,12 +338,12 @@ namespace VIDEO
     // Skip if path is dedicated to a plugin
     if (URIUtils::IsPlugin(strDirectory) &&
         !CPluginDirectory::IsMediaLibraryScanningAllowed(
-            TranslateContent(contentType_AsDefinedInScraper), strDirectory))
+            TranslateContent(contentType), strDirectory))
     {
       CLog::Log(LOGINFO,
                 "VideoInfoScanner: Plugin '{}' does not support media library scanning for '{}' "
-                "contentType_AsDefinedInScraper",
-                CURL::GetRedacted(strDirectory), TranslateContent(contentType_AsDefinedInScraper));
+                "contentType",
+                CURL::GetRedacted(strDirectory), TranslateContent(contentType));
       return false;
     }
 
@@ -359,28 +354,28 @@ namespace VIDEO
   {
     return false;
   }
-  bool CVideoInfoScanner::DoScan(const std::vector<SourcePathContent>& _pathsContent)
+  bool CVideoInfoScanner::DoScan(const std::vector<SourcePathContent>& pathsContent)
   {
     if (m_handle)
     {
-      m_handle->SetTitle(g_localizeStrings.Get(20415)); //"Scanning for new content"
+      m_handle->SetTitle(g_localizeStrings.Get(20415));
     }
 
     // Calculate total items count to display a proper progress bar
     int totalItems = 0;
-    for (const auto& pathContent : _pathsContent)
+    for (const auto& pathContent : pathsContent)
     {
       totalItems += pathContent.items.Size();
     }
 
     int itemsChecked = 0;
-    for (const auto& pathContent : _pathsContent)
+    for (const auto& pathContent : pathsContent)
     {
       const CFileItemList& remoteDirectoryItems = pathContent.items;
 
       for (int i = 0; i < remoteDirectoryItems.Size(); ++i)
       {
-        CFileItemPtr remoteItem = remoteDirectoryItems[i];
+        std::shared_ptr<CFileItem> remoteItem = remoteDirectoryItems[i];
         std::string remoteItemPath = remoteItem->GetPath();
 
         // Update progress bar
@@ -388,20 +383,19 @@ namespace VIDEO
         {
           itemsChecked++;
           m_handle->SetPercentage(itemsChecked * 100.f / totalItems);
-          m_handle->SetText(remoteItem->GetMovieName(true));
         }
 
         // Support scan cancellation
         if (m_bStop)
           return !m_bStop;
 
-        if ((pathContent.contentType_AsDefinedInScraper == CONTENT_TVSHOWS &&
-             remoteItem->m_bIsFolder) //For TV shows, we only scan folders
+        if ((pathContent.contentType == CONTENT_TVSHOWS &&
+             remoteItem->m_bIsFolder) // For TV shows, we only scan folders
             || !remoteItem->m_bIsFolder) // if item is not a folder, it's a file we want to scan
         {
           // Check if video file is already in DB:
           bool isVideoAlreadyInDB = false;
-          switch (pathContent.contentType_AsDefinedInScraper)
+          switch (pathContent.contentType)
           {
             case CONTENT_MOVIES:
               isVideoAlreadyInDB = m_database.HasMovieInfo(remoteItemPath);
@@ -416,6 +410,11 @@ namespace VIDEO
 
           if (!isVideoAlreadyInDB) // Video is not yet in the DB so we try to add it:
           {
+            if (m_handle)
+            {
+              m_handle->SetText(remoteItem->GetMovieName(true)); // Show media name only for new items
+            }
+
             CLog::Log(LOGDEBUG, "VideoInfoScanner: Scanning item '{}'",
                       CURL::GetRedacted(remoteItemPath));
 
@@ -424,8 +423,8 @@ namespace VIDEO
 
             //note: function 'RetrieveVideoInfo' does not only 'retreive' but also adds media into the DB.
             bool foundSomething = RetrieveVideoInfo(
-                itemList, pathContent.rootPathScraperScanSettings.parent_name_root,
-                pathContent.contentType_AsDefinedInScraper);
+                itemList, pathContent.scrapperScanSettings.parent_name_root,
+                pathContent.contentType);
             if (foundSomething)
             {
               CLog::Log(LOGDEBUG, "VideoInfoScanner: media info added for {}",
@@ -482,7 +481,7 @@ namespace VIDEO
         continue;
 
       // Discard all exclude files defined by regExExclude
-      //         TODO: probably not necessary anymore as replaced by 'isPathAllowedForScan' function
+      //! @todo: Check if necessary as now probably already covered by 'IsPathAllowedForScan' function
       if (CUtil::ExcludeFileOrFolder(pItem->GetPath(), (content == CONTENT_TVSHOWS)
                                                            ? CServiceBroker::GetSettingsComponent()
                                                                  ->GetAdvancedSettings()
@@ -498,7 +497,7 @@ namespace VIDEO
       INFO_RET ret = INFO_CANCELLED;
       if (info2->Content() == CONTENT_TVSHOWS)
         ret = RetrieveInfoForTvShow(pItem.get(), bDirNames, info2, useLocal, pURL, fetchEpisodes, pDlgProgress);
-      else if (info2->Content() == CONTENT_MOVIES) // if (pItem->m_bIsFolder
+      else if (info2->Content() == CONTENT_MOVIES)
         ret = RetrieveInfoForMovie(pItem.get(), bDirNames, info2, useLocal, pURL, pDlgProgress);
       else if (info2->Content() == CONTENT_MUSICVIDEOS)
         ret = RetrieveInfoForMusicVideo(pItem.get(), bDirNames, info2, useLocal, pURL, pDlgProgress);
