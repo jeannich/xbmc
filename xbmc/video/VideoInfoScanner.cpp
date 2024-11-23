@@ -133,19 +133,20 @@ namespace VIDEO
         // Load root path properties from scraper settings:
         bool foundDirectly = false;
         SScanSettings rootPathScraperScanSettings;
-        const ScraperPtr info = m_database.GetScraperForPath(rootPathToScan, rootPathScraperScanSettings,
-                                                       foundDirectly);
+        const ScraperPtr info = m_database.GetScraperForPath(
+            rootPathToScan, rootPathScraperScanSettings, foundDirectly);
         const CONTENT_TYPE contentType = info ? info->Content() : CONTENT_NONE;
 
         // List and store medias:
-        if (IsPathAllowedForScan(rootPathToScan, rootPathScraperScanSettings,
-                                 contentType))
+        if (IsPathAllowedForScan(rootPathToScan, rootPathScraperScanSettings, contentType))
         {
-          SourcePathContent pathContent = {rootPathToScan, rootPathScraperScanSettings, contentType};
-          pathContent.items.SetPath(rootPathToScan); // We use the 'path' of CFileItemList to store its root-path-to-scan
+          SourcePathContent pathContent = {rootPathToScan, rootPathScraperScanSettings,
+                                           contentType};
+          pathContent.items.SetPath(
+              rootPathToScan); // We use the 'path' of CFileItemList to store its root-path-to-scan
 
-          LoadRemoteItems(rootPathToScan, pathContent.items,
-                          rootPathScraperScanSettings, contentType);
+          LoadRemoteItems(rootPathToScan, pathContent.items, rootPathScraperScanSettings,
+                          contentType);
 
           _pathsContent.push_back(pathContent);
         }
@@ -291,8 +292,7 @@ namespace VIDEO
           if (rootPathScraperScanSettings.recurse > 0)
           {
             std::string remoteItemPath = remoteItem->GetPath();
-            if (IsPathAllowedForScan(remoteItemPath, rootPathScraperScanSettings,
-                                     contentType))
+            if (IsPathAllowedForScan(remoteItemPath, rootPathScraperScanSettings, contentType))
             {
               LoadRemoteItems(remoteItemPath, remoteDirectoryItems, rootPathScraperScanSettings,
                               contentType);
@@ -323,11 +323,11 @@ namespace VIDEO
     // Discard path matching exclusion regex
     const std::vector<std::string>& regexpExcludeRules =
         contentType == CONTENT_TVSHOWS ? CServiceBroker::GetSettingsComponent()
-                                                                ->GetAdvancedSettings()
-                                                                ->m_tvshowExcludeFromScanRegExps
-                                                          : CServiceBroker::GetSettingsComponent()
-                                                                ->GetAdvancedSettings()
-                                                                ->m_moviesExcludeFromScanRegExps;
+                                             ->GetAdvancedSettings()
+                                             ->m_tvshowExcludeFromScanRegExps
+                                       : CServiceBroker::GetSettingsComponent()
+                                             ->GetAdvancedSettings()
+                                             ->m_moviesExcludeFromScanRegExps;
     if (CUtil::ExcludeFileOrFolder(strDirectory, regexpExcludeRules))
       return false;
 
@@ -336,9 +336,8 @@ namespace VIDEO
       return false;
 
     // Skip if path is dedicated to a plugin
-    if (URIUtils::IsPlugin(strDirectory) &&
-        !CPluginDirectory::IsMediaLibraryScanningAllowed(
-            TranslateContent(contentType), strDirectory))
+    if (URIUtils::IsPlugin(strDirectory) && !CPluginDirectory::IsMediaLibraryScanningAllowed(
+                                                TranslateContent(contentType), strDirectory))
     {
       CLog::Log(LOGINFO,
                 "VideoInfoScanner: Plugin '{}' does not support media library scanning for '{}' "
@@ -412,7 +411,8 @@ namespace VIDEO
           {
             if (m_handle)
             {
-              m_handle->SetText(remoteItem->GetMovieName(true)); // Show media name only for new items
+              m_handle->SetText(
+                  remoteItem->GetMovieName(true)); // Show media name only for new items
             }
 
             CLog::Log(LOGDEBUG, "VideoInfoScanner: Scanning item '{}'",
@@ -422,9 +422,9 @@ namespace VIDEO
             itemList.Add(remoteItem);
 
             //note: function 'RetrieveVideoInfo' does not only 'retreive' but also adds media into the DB.
-            bool foundSomething = RetrieveVideoInfo(
-                itemList, pathContent.scrapperScanSettings.parent_name_root,
-                pathContent.contentType);
+            bool foundSomething =
+                RetrieveVideoInfo(itemList, pathContent.scrapperScanSettings.parent_name_root,
+                                  pathContent.contentType);
             if (foundSomething)
             {
               CLog::Log(LOGDEBUG, "VideoInfoScanner: media info added for {}",

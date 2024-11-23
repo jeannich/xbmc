@@ -8,11 +8,11 @@
 
 #pragma once
 
+#include "FileItem.h"
 #include "InfoScanner.h"
 #include "VideoDatabase.h"
 #include "addons/Scraper.h"
 #include "guilib/GUIListItem.h"
-#include "FileItem.h"
 
 #include <set>
 #include <string>
@@ -112,8 +112,8 @@ namespace VIDEO
       CONTENT_TYPE contentType;
       CFileItemList items;
 
-      SourcePathContent(std::string a, SScanSettings b, CONTENT_TYPE c):
-               rootPath(a), scrapperScanSettings(b), contentType(c), items() {};
+      SourcePathContent(std::string a, SScanSettings b, CONTENT_TYPE c)
+        : rootPath(a), scrapperScanSettings(b), contentType(c), items(){};
     };
 
     virtual void Process();
