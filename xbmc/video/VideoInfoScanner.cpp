@@ -471,8 +471,8 @@ namespace VIDEO
       CFileItemPtr pItem = items[i];
 
       // we do this since we may have a override per dir
-      ScraperPtr info2 = m_database.GetScraperForPath(pItem->m_bIsFolder ? pItem->GetPath() : items.GetPath());
-      if (!info2) // skip
+      ScraperPtr scraper = m_database.GetScraperForPath(pItem->m_bIsFolder ? pItem->GetPath() : items.GetPath());
+      if (!scraper) // skip
         continue;
 
       // Discard all .nomedia folders
@@ -491,18 +491,18 @@ namespace VIDEO
         continue;
 
       // clear our scraper cache
-      info2->ClearCache();
+      scraper->ClearCache();
 
       INFO_RET ret = INFO_CANCELLED;
-      if (info2->Content() == CONTENT_TVSHOWS)
-        ret = RetrieveInfoForTvShow(pItem.get(), bDirNames, info2, useLocal, pURL, fetchEpisodes, pDlgProgress);
-      else if (info2->Content() == CONTENT_MOVIES)
-        ret = RetrieveInfoForMovie(pItem.get(), bDirNames, info2, useLocal, pURL, pDlgProgress);
-      else if (info2->Content() == CONTENT_MUSICVIDEOS)
-        ret = RetrieveInfoForMusicVideo(pItem.get(), bDirNames, info2, useLocal, pURL, pDlgProgress);
+      if (scraper->Content() == CONTENT_TVSHOWS)
+        ret = RetrieveInfoForTvShow(pItem.get(), bDirNames, scraper, useLocal, pURL, fetchEpisodes, pDlgProgress);
+      else if (scraper->Content() == CONTENT_MOVIES)
+        ret = RetrieveInfoForMovie(pItem.get(), bDirNames, scraper, useLocal, pURL, pDlgProgress);
+      else if (scraper->Content() == CONTENT_MUSICVIDEOS)
+        ret = RetrieveInfoForMusicVideo(pItem.get(), bDirNames, scraper, useLocal, pURL, pDlgProgress);
       else
       {
-        CLog::Log(LOGERROR, "VideoInfoScanner: Unknown content type {} ({})", info2->Content(),
+        CLog::Log(LOGERROR, "VideoInfoScanner: Unknown content type {} ({})", scraper->Content(),
                   CURL::GetRedacted(pItem->GetPath()));
         FoundSomeInfo = false;
         break;
@@ -526,15 +526,15 @@ namespace VIDEO
                   CURL::GetRedacted(pItem->GetPath()));
 
         MediaType mediaType = MediaTypeMovie;
-        if (info2->Content() == CONTENT_TVSHOWS)
+        if (scraper->Content() == CONTENT_TVSHOWS)
           mediaType = MediaTypeTvShow;
-        else if (info2->Content() == CONTENT_MUSICVIDEOS)
+        else if (scraper->Content() == CONTENT_MUSICVIDEOS)
           mediaType = MediaTypeMusicVideo;
 
         auto eventLog = CServiceBroker::GetEventLog();
         if (eventLog)
         {
-          const std::string itemlogpath = (info2->Content() == CONTENT_TVSHOWS)
+          const std::string itemlogpath = (scraper->Content() == CONTENT_TVSHOWS)
                                               ? CURL::GetRedacted(pItem->GetPath())
                                               : URIUtils::GetFileName(pItem->GetPath());
 
@@ -572,7 +572,7 @@ namespace VIDEO
   CInfoScanner::INFO_RET
   CVideoInfoScanner::RetrieveInfoForTvShow(CFileItem *pItem,
                                            bool bDirNames,
-                                           ScraperPtr &info2,
+                                           ScraperPtr &scraper,
                                            bool useLocal,
                                            CScraperUrl* pURL,
                                            bool fetchEpisodes,
@@ -608,7 +608,7 @@ namespace VIDEO
     }
     if (idTvShow > -1 && (!isSeason || idSeason > -1) && (fetchEpisodes || !pItem->m_bIsFolder))
     {
-      INFO_RET ret = RetrieveInfoForEpisodes(pItem, idTvShow, info2, useLocal, pDlgProgress);
+      INFO_RET ret = RetrieveInfoForEpisodes(pItem, idTvShow, scraper, useLocal, pDlgProgress);
       if (ret == INFO_ADDED)
         m_database.SetPathHash(strPath, pItem->GetProperty("hash").asString());
       return ret;
@@ -628,7 +628,7 @@ namespace VIDEO
     std::unique_ptr<IVideoInfoTagLoader> loader;
     if (useLocal)
     {
-      loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(*pItem, info2, bDirNames));
+      loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(*pItem, scraper, bDirNames));
       if (loader)
       {
         pItem->GetVideoInfoTag()->Reset();
@@ -639,12 +639,12 @@ namespace VIDEO
     if (result == CInfoScanner::FULL_NFO)
     {
 
-      long lResult = AddVideo(pItem, info2->Content(), bDirNames, useLocal);
+      long lResult = AddVideo(pItem, scraper->Content(), bDirNames, useLocal);
       if (lResult < 0)
         return INFO_ERROR;
       if (fetchEpisodes)
       {
-        INFO_RET ret = RetrieveInfoForEpisodes(pItem, lResult, info2, useLocal, pDlgProgress);
+        INFO_RET ret = RetrieveInfoForEpisodes(pItem, lResult, scraper, useLocal, pDlgProgress);
         if (ret == INFO_ADDED)
           m_database.SetPathHash(pItem->GetPath(), pItem->GetProperty("hash").asString());
         return ret;
@@ -671,21 +671,21 @@ namespace VIDEO
     std::string identifierType;
     std::string identifier;
     long lResult = -1;
-    if (info2->IsPython() && CUtil::GetFilenameIdentifier(movieTitle, identifierType, identifier))
+    if (scraper->IsPython() && CUtil::GetFilenameIdentifier(movieTitle, identifierType, identifier))
     {
       const std::unordered_map<std::string, std::string> uniqueIDs{{identifierType, identifier}};
-      if (GetDetails(pItem, uniqueIDs, url, info2,
+      if (GetDetails(pItem, uniqueIDs, url, scraper,
                      (result == CInfoScanner::COMBINED_NFO || result == CInfoScanner::OVERRIDE_NFO)
                          ? loader.get()
                          : nullptr,
                      pDlgProgress))
       {
-        if ((lResult = AddVideo(pItem, info2->Content(), false, useLocal)) < 0)
+        if ((lResult = AddVideo(pItem, scraper->Content(), false, useLocal)) < 0)
           return INFO_ERROR;
 
         if (fetchEpisodes)
         {
-          INFO_RET ret = RetrieveInfoForEpisodes(pItem, lResult, info2, useLocal, pDlgProgress);
+          INFO_RET ret = RetrieveInfoForEpisodes(pItem, lResult, scraper, useLocal, pDlgProgress);
           if (ret == INFO_ADDED)
           {
             m_database.SetPathHash(pItem->GetPath(), pItem->GetProperty("hash").asString());
@@ -698,25 +698,25 @@ namespace VIDEO
 
     if (pURL && pURL->HasUrls())
       url = *pURL;
-    else if ((retVal = FindVideo(movieTitle, movieYear, info2, url, pDlgProgress)) <= 0)
+    else if ((retVal = FindVideo(movieTitle, movieYear, scraper, url, pDlgProgress)) <= 0)
       return retVal < 0 ? INFO_CANCELLED : INFO_NOT_FOUND;
 
     CLog::Log(LOGDEBUG, "VideoInfoScanner: Fetching url '{}' using {} scraper (content: '{}')",
-              url.GetFirstThumbUrl(), info2->Name(), TranslateContent(info2->Content()));
+              url.GetFirstThumbUrl(), scraper->Name(), TranslateContent(scraper->Content()));
     const std::unordered_map<std::string, std::string> uniqueIDs{{identifierType, identifier}};
 
-    if (GetDetails(pItem, {}, url, info2,
+    if (GetDetails(pItem, {}, url, scraper,
                    (result == CInfoScanner::COMBINED_NFO || result == CInfoScanner::OVERRIDE_NFO)
                        ? loader.get()
                        : nullptr,
                    pDlgProgress))
     {
-      if ((lResult = AddVideo(pItem, info2->Content(), false, useLocal)) < 0)
+      if ((lResult = AddVideo(pItem, scraper->Content(), false, useLocal)) < 0)
         return INFO_ERROR;
     }
     if (fetchEpisodes)
     {
-      INFO_RET ret = RetrieveInfoForEpisodes(pItem, lResult, info2, useLocal, pDlgProgress);
+      INFO_RET ret = RetrieveInfoForEpisodes(pItem, lResult, scraper, useLocal, pDlgProgress);
       if (ret == INFO_ADDED)
         m_database.SetPathHash(pItem->GetPath(), pItem->GetProperty("hash").asString());
     }
@@ -726,7 +726,7 @@ namespace VIDEO
   CInfoScanner::INFO_RET
   CVideoInfoScanner::RetrieveInfoForMovie(CFileItem *pItem,
                                           bool bDirNames,
-                                          ScraperPtr &info2,
+                                          ScraperPtr &scraper,
                                           bool useLocal,
                                           CScraperUrl* pURL,
                                           CGUIDialogProgress* pDlgProgress)
@@ -750,7 +750,7 @@ namespace VIDEO
     std::unique_ptr<IVideoInfoTagLoader> loader;
     if (useLocal)
     {
-      loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(*pItem, info2, bDirNames));
+      loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(*pItem, scraper, bDirNames));
       if (loader)
       {
         pItem->GetVideoInfoTag()->Reset();
@@ -759,7 +759,7 @@ namespace VIDEO
     }
     if (result == CInfoScanner::FULL_NFO)
     {
-      const int dbId = AddVideo(pItem, info2->Content(), bDirNames, true);
+      const int dbId = AddVideo(pItem, scraper->Content(), bDirNames, true);
       if (dbId < 0)
         return INFO_ERROR;
       if (!m_ignoreVideoVersions && ProcessVideoVersion(VideoDbContentType::MOVIES, dbId))
@@ -785,16 +785,16 @@ namespace VIDEO
 
     std::string identifierType;
     std::string identifier;
-    if (info2->IsPython() && CUtil::GetFilenameIdentifier(movieTitle, identifierType, identifier))
+    if (scraper->IsPython() && CUtil::GetFilenameIdentifier(movieTitle, identifierType, identifier))
     {
       const std::unordered_map<std::string, std::string> uniqueIDs{{identifierType, identifier}};
-      if (GetDetails(pItem, uniqueIDs, url, info2,
+      if (GetDetails(pItem, uniqueIDs, url, scraper,
                      (result == CInfoScanner::COMBINED_NFO || result == CInfoScanner::OVERRIDE_NFO)
                          ? loader.get()
                          : nullptr,
                      pDlgProgress))
       {
-        const int dbId = AddVideo(pItem, info2->Content(), bDirNames, useLocal);
+        const int dbId = AddVideo(pItem, scraper->Content(), bDirNames, useLocal);
         if (dbId < 0)
           return INFO_ERROR;
         if (!m_ignoreVideoVersions && ProcessVideoVersion(VideoDbContentType::MOVIES, dbId))
@@ -805,19 +805,19 @@ namespace VIDEO
 
     if (pURL && pURL->HasUrls())
       url = *pURL;
-    else if ((retVal = FindVideo(movieTitle, movieYear, info2, url, pDlgProgress)) <= 0)
+    else if ((retVal = FindVideo(movieTitle, movieYear, scraper, url, pDlgProgress)) <= 0)
       return retVal < 0 ? INFO_CANCELLED : INFO_NOT_FOUND;
 
     CLog::Log(LOGDEBUG, "VideoInfoScanner: Fetching url '{}' using {} scraper (content: '{}')",
-              url.GetFirstThumbUrl(), info2->Name(), TranslateContent(info2->Content()));
+              url.GetFirstThumbUrl(), scraper->Name(), TranslateContent(scraper->Content()));
 
-    if (GetDetails(pItem, {}, url, info2,
+    if (GetDetails(pItem, {}, url, scraper,
                    (result == CInfoScanner::COMBINED_NFO || result == CInfoScanner::OVERRIDE_NFO)
                        ? loader.get()
                        : nullptr,
                    pDlgProgress))
     {
-      const int dbId = AddVideo(pItem, info2->Content(), bDirNames, useLocal);
+      const int dbId = AddVideo(pItem, scraper->Content(), bDirNames, useLocal);
       if (dbId < 0)
         return INFO_ERROR;
       if (!m_ignoreVideoVersions && ProcessVideoVersion(VideoDbContentType::MOVIES, dbId))
@@ -831,7 +831,7 @@ namespace VIDEO
   CInfoScanner::INFO_RET
   CVideoInfoScanner::RetrieveInfoForMusicVideo(CFileItem *pItem,
                                                bool bDirNames,
-                                               ScraperPtr &info2,
+                                               ScraperPtr &scraper,
                                                bool useLocal,
                                                CScraperUrl* pURL,
                                                CGUIDialogProgress* pDlgProgress)
@@ -855,7 +855,7 @@ namespace VIDEO
     std::unique_ptr<IVideoInfoTagLoader> loader;
     if (useLocal)
     {
-      loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(*pItem, info2, bDirNames));
+      loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(*pItem, scraper, bDirNames));
       if (loader)
       {
         pItem->GetVideoInfoTag()->Reset();
@@ -864,7 +864,7 @@ namespace VIDEO
     }
     if (result == CInfoScanner::FULL_NFO)
     {
-      if (AddVideo(pItem, info2->Content(), bDirNames, true) < 0)
+      if (AddVideo(pItem, scraper->Content(), bDirNames, true) < 0)
         return INFO_ERROR;
       return INFO_ADDED;
     }
@@ -887,16 +887,16 @@ namespace VIDEO
 
     std::string identifierType;
     std::string identifier;
-    if (info2->IsPython() && CUtil::GetFilenameIdentifier(movieTitle, identifierType, identifier))
+    if (scraper->IsPython() && CUtil::GetFilenameIdentifier(movieTitle, identifierType, identifier))
     {
       const std::unordered_map<std::string, std::string> uniqueIDs{{identifierType, identifier}};
-      if (GetDetails(pItem, uniqueIDs, url, info2,
+      if (GetDetails(pItem, uniqueIDs, url, scraper,
                      (result == CInfoScanner::COMBINED_NFO || result == CInfoScanner::OVERRIDE_NFO)
                          ? loader.get()
                          : nullptr,
                      pDlgProgress))
       {
-        if (AddVideo(pItem, info2->Content(), bDirNames, useLocal) < 0)
+        if (AddVideo(pItem, scraper->Content(), bDirNames, useLocal) < 0)
           return INFO_ERROR;
         return INFO_ADDED;
       }
@@ -904,19 +904,19 @@ namespace VIDEO
 
     if (pURL && pURL->HasUrls())
       url = *pURL;
-    else if ((retVal = FindVideo(movieTitle, movieYear, info2, url, pDlgProgress)) <= 0)
+    else if ((retVal = FindVideo(movieTitle, movieYear, scraper, url, pDlgProgress)) <= 0)
       return retVal < 0 ? INFO_CANCELLED : INFO_NOT_FOUND;
 
     CLog::Log(LOGDEBUG, "VideoInfoScanner: Fetching url '{}' using {} scraper (content: '{}')",
-              url.GetFirstThumbUrl(), info2->Name(), TranslateContent(info2->Content()));
+              url.GetFirstThumbUrl(), scraper->Name(), TranslateContent(scraper->Content()));
 
-    if (GetDetails(pItem, {}, url, info2,
+    if (GetDetails(pItem, {}, url, scraper,
                    (result == CInfoScanner::COMBINED_NFO || result == CInfoScanner::OVERRIDE_NFO)
                        ? loader.get()
                        : nullptr,
                    pDlgProgress))
     {
-      if (AddVideo(pItem, info2->Content(), bDirNames, useLocal) < 0)
+      if (AddVideo(pItem, scraper->Content(), bDirNames, useLocal) < 0)
         return INFO_ERROR;
       return INFO_ADDED;
     }

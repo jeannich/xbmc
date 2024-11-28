@@ -124,7 +124,7 @@ public:
   CScraperUrl ResolveIDToUrl(const std::string &externalID);
 
   std::vector<CScraperUrl> FindMovie(XFILE::CCurlFile &fcurl,
-    const std::string &movieTitle, int movieYear, bool fFirst);
+    const std::string &movieTitle, int movieYear, bool bCleanChars);
   std::vector<MUSIC_GRABBER::CMusicAlbumInfo> FindAlbum(XFILE::CCurlFile &fcurl,
     const std::string &sAlbum, const std::string &sArtist = "");
   std::vector<MUSIC_GRABBER::CMusicArtistInfo> FindArtist(
