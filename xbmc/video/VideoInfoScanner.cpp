@@ -1996,8 +1996,8 @@ namespace VIDEO
             pDlgProgress->Progress();
           }
 
-          CVideoInfoDownloader imdb(scraper);
-          if (!imdb.GetEpisodeList(url, episodes))
+          CVideoInfoDownloader videoInfoDownloader(scraper);
+          if (!videoInfoDownloader.GetEpisodeList(url, episodes))
             return INFO_NOT_FOUND;
 
           hasEpisodeGuide = true;
@@ -2114,10 +2114,10 @@ namespace VIDEO
 
       if (bFound)
       {
-        CVideoInfoDownloader imdb(scraper);
+        CVideoInfoDownloader videoInfoDownloader(scraper);
         CFileItem item;
         item.SetPath(file->strPath);
-        if (!imdb.GetEpisodeDetails(guide->cScraperUrl, *item.GetVideoInfoTag(), pDlgProgress))
+        if (!videoInfoDownloader.GetEpisodeDetails(guide->cScraperUrl, *item.GetVideoInfoTag(), pDlgProgress))
           return INFO_NOT_FOUND; //! @todo should we just skip to the next episode?
 
         // Only set season/epnum from filename when it is not already set by a scraper
@@ -2153,8 +2153,8 @@ namespace VIDEO
     if (m_handle && !url.GetTitle().empty())
       m_handle->SetText(url.GetTitle());
 
-    CVideoInfoDownloader imdb(scraper);
-    bool ret = imdb.GetDetails(uniqueIDs, url, movieDetails, pDialog);
+    CVideoInfoDownloader videoInfoDownloader(scraper);
+    bool ret = videoInfoDownloader.GetDetails(uniqueIDs, url, movieDetails, pDialog);
 
     if (ret)
     {
@@ -2437,8 +2437,8 @@ namespace VIDEO
   int CVideoInfoScanner::FindVideo(const std::string &title, int year, const ScraperPtr &scraper, CScraperUrl &url, CGUIDialogProgress *progress)
   {
     MOVIELIST movielist;
-    CVideoInfoDownloader imdb(scraper);
-    int returncode = imdb.FindMovie(title, year, movielist, progress);
+    CVideoInfoDownloader videoInfoDownloader(scraper);
+    int returncode = videoInfoDownloader.FindMovie(title, year, movielist, progress);
     if (returncode < 0 || (returncode == 0 && (m_bStop || !DownloadFailed(progress))))
     { // scraper reported an error, or we had an error and user wants to cancel the scan
       m_bStop = true;
