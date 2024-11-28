@@ -471,7 +471,8 @@ namespace VIDEO
       CFileItemPtr pItem = items[i];
 
       // we do this since we may have a override per dir
-      ScraperPtr scraper = m_database.GetScraperForPath(pItem->m_bIsFolder ? pItem->GetPath() : items.GetPath());
+      ScraperPtr scraper =
+          m_database.GetScraperForPath(pItem->m_bIsFolder ? pItem->GetPath() : items.GetPath());
       if (!scraper) // skip
         continue;
 
@@ -495,11 +496,13 @@ namespace VIDEO
 
       INFO_RET ret = INFO_CANCELLED;
       if (scraper->Content() == CONTENT_TVSHOWS)
-        ret = RetrieveInfoForTvShow(pItem.get(), bDirNames, scraper, useLocal, pURL, fetchEpisodes, pDlgProgress);
+        ret = RetrieveInfoForTvShow(pItem.get(), bDirNames, scraper, useLocal, pURL, fetchEpisodes,
+                                    pDlgProgress);
       else if (scraper->Content() == CONTENT_MOVIES)
         ret = RetrieveInfoForMovie(pItem.get(), bDirNames, scraper, useLocal, pURL, pDlgProgress);
       else if (scraper->Content() == CONTENT_MUSICVIDEOS)
-        ret = RetrieveInfoForMusicVideo(pItem.get(), bDirNames, scraper, useLocal, pURL, pDlgProgress);
+        ret = RetrieveInfoForMusicVideo(pItem.get(), bDirNames, scraper, useLocal, pURL,
+                                        pDlgProgress);
       else
       {
         CLog::Log(LOGERROR, "VideoInfoScanner: Unknown content type {} ({})", scraper->Content(),
@@ -569,14 +572,13 @@ namespace VIDEO
     return FoundSomeInfo;
   }
 
-  CInfoScanner::INFO_RET
-  CVideoInfoScanner::RetrieveInfoForTvShow(CFileItem *pItem,
-                                           bool bDirNames,
-                                           ScraperPtr &scraper,
-                                           bool useLocal,
-                                           CScraperUrl* pURL,
-                                           bool fetchEpisodes,
-                                           CGUIDialogProgress* pDlgProgress)
+  CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForTvShow(CFileItem* pItem,
+                                                                  bool bDirNames,
+                                                                  ScraperPtr& scraper,
+                                                                  bool useLocal,
+                                                                  CScraperUrl* pURL,
+                                                                  bool fetchEpisodes,
+                                                                  CGUIDialogProgress* pDlgProgress)
   {
     const bool isSeason =
         pItem->HasVideoInfoTag() && pItem->GetVideoInfoTag()->m_type == MediaTypeSeason;
@@ -723,13 +725,12 @@ namespace VIDEO
     return INFO_ADDED;
   }
 
-  CInfoScanner::INFO_RET
-  CVideoInfoScanner::RetrieveInfoForMovie(CFileItem *pItem,
-                                          bool bDirNames,
-                                          ScraperPtr &scraper,
-                                          bool useLocal,
-                                          CScraperUrl* pURL,
-                                          CGUIDialogProgress* pDlgProgress)
+  CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForMovie(CFileItem* pItem,
+                                                                 bool bDirNames,
+                                                                 ScraperPtr& scraper,
+                                                                 bool useLocal,
+                                                                 CScraperUrl* pURL,
+                                                                 CGUIDialogProgress* pDlgProgress)
   {
     if (pItem->m_bIsFolder || !pItem->IsVideo() || pItem->IsNFO() ||
        (pItem->IsPlayList() && !URIUtils::HasExtension(pItem->GetPath(), ".strm")))
@@ -828,13 +829,13 @@ namespace VIDEO
     return INFO_NOT_FOUND;
   }
 
-  CInfoScanner::INFO_RET
-  CVideoInfoScanner::RetrieveInfoForMusicVideo(CFileItem *pItem,
-                                               bool bDirNames,
-                                               ScraperPtr &scraper,
-                                               bool useLocal,
-                                               CScraperUrl* pURL,
-                                               CGUIDialogProgress* pDlgProgress)
+  CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForMusicVideo(
+      CFileItem* pItem,
+      bool bDirNames,
+      ScraperPtr& scraper,
+      bool useLocal,
+      CScraperUrl* pURL,
+      CGUIDialogProgress* pDlgProgress)
   {
     if (pItem->m_bIsFolder || !pItem->IsVideo() || pItem->IsNFO() ||
        (pItem->IsPlayList() && !URIUtils::HasExtension(pItem->GetPath(), ".strm")))

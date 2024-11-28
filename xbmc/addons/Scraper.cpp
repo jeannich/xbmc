@@ -904,8 +904,9 @@ static bool PythonDetails(const std::string& ID,
 
 // fetch list of matching movies sorted by relevance (may be empty);
 // throws CScraperError on error; first called with bCleanChars set, then unset if first try fails
-std::vector<CScraperUrl> CScraper::FindMovie(XFILE::CCurlFile &fcurl,
-                                             const std::string &movieTitle, int movieYear,
+std::vector<CScraperUrl> CScraper::FindMovie(XFILE::CCurlFile& fcurl,
+                                             const std::string& movieTitle,
+                                             int movieYear,
                                              bool bCleanChars)
 {
   // prepare parameters for URL creation
