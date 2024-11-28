@@ -2242,7 +2242,7 @@ namespace VIDEO
   {
     CDigest digest{CDigest::Type::MD5};
 
-    if (regexExcludeRules.size())
+    if (!regexExcludeRules.empty())
       digest.Update(StringUtils::Join(regexExcludeRules, "|"));
 
     struct __stat64 buffer;
