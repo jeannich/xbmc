@@ -2269,7 +2269,7 @@ namespace VIDEO
 
     CDigest digest{CDigest::Type::MD5};
 
-    if (regexExcludeRules.size())
+    if (!regexExcludeRules.empty())
       digest.Update(StringUtils::Join(regexExcludeRules, "|"));
 
     int64_t time = 0;
