@@ -122,7 +122,7 @@ namespace VIDEO
       m_bCanInterrupt = false;
 
       if (m_handle)
-        m_handle->SetTitle(g_localizeStrings.Get(40437));
+        m_handle->SetTitle(g_localizeStrings.Get(20475));
 
       // List all media files of all 'm_pathsToScan'
       //   INFO: m_pathsToScan may contain path with different library content, so we store their properties into a dedicated struct.
@@ -380,8 +380,7 @@ namespace VIDEO
         // Update progress bar
         if (m_handle)
         {
-          itemsChecked++;
-          m_handle->SetPercentage(itemsChecked * 100.f / totalItems);
+          m_handle->SetProgress(++itemsChecked, totalItems);
         }
 
         // Support scan cancellation
