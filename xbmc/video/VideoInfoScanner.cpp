@@ -48,7 +48,9 @@
 #include "video/dialogs/GUIDialogVideoManagerVersions.h"
 
 #include <algorithm>
+#include <chrono>
 #include <memory>
+#include <thread>
 #include <utility>
 
 using namespace XFILE;
@@ -370,6 +372,7 @@ bool CVideoInfoScanner::DoScan(const std::vector<SourcePathContent>& pathsConten
     totalItems += pathContent.items.Size();
   }
 
+  CFileItemList unidentifiedItems;
   int itemsChecked = 0;
   for (const auto& pathContent : pathsContent)
   {
@@ -432,6 +435,7 @@ bool CVideoInfoScanner::DoScan(const std::vector<SourcePathContent>& pathsConten
           }
           else
           {
+            unidentifiedItems.Add(remoteItem);
             CLog::Log(LOGDEBUG, "VideoInfoScanner: Could NOT find media info for {}",
                       CURL::GetRedacted(remoteItemPath));
           }
@@ -444,6 +448,32 @@ bool CVideoInfoScanner::DoScan(const std::vector<SourcePathContent>& pathsConten
       }
     }
   }
+
+  // Display a scan report
+  totalItems = unidentifiedItems.Size();
+  itemsChecked = 0;
+  if (m_handle && totalItems > 0)
+  {
+    std::string pluralMark = (totalItems > 1) ? "s" : "";
+    m_handle->SetTitle(std::to_string(totalItems) + " unidentified video" + pluralMark +
+                       " (details in logs)");
+
+    for (const auto& item : unidentifiedItems)
+    {
+      m_handle->SetProgress(++itemsChecked, totalItems);
+      m_handle->SetText(item->GetMovieName());
+
+      CLog::Log(LOGDEBUG, "VideoInfoScanner: unidentified item '{}'",
+                CURL::GetRedacted(item->GetPath()));
+
+      // Support scan cancellation
+      if (m_bStop)
+        return !m_bStop;
+
+      std::this_thread::sleep_for(std::chrono::milliseconds(700)); //CThread::Sleep(1ms);
+    }
+  }
+
   return !m_bStop;
 }
 
@@ -631,10 +661,12 @@ CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForTvShow(CFileItem* pItem
   if (m_handle)
     m_handle->SetText(pItem->GetMovieName(bDirNames));
 
+  // Local NFO file analysis
   CInfoScanner::INFO_TYPE result = CInfoScanner::NO_NFO;
   CScraperUrl scrUrl;
-  // handle .nfo files
   std::unique_ptr<IVideoInfoTagLoader> loader;
+  std::string movieTitle = pItem->GetMovieName(bDirNames);
+  int movieYear = -1; // hint that movie title was not found
   if (useLocal)
   {
     loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(*pItem, scraper, bDirNames));
@@ -642,41 +674,36 @@ CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForTvShow(CFileItem* pItem
     {
       pItem->GetVideoInfoTag()->Reset();
       result = loader->Load(*pItem->GetVideoInfoTag(), false);
-    }
-  }
 
-  if (result == CInfoScanner::FULL_NFO)
-  {
-
-    long lResult = AddVideo(pItem, scraper->Content(), bDirNames, useLocal);
-    if (lResult < 0)
-      return INFO_ERROR;
-    if (fetchEpisodes)
-    {
-      INFO_RET ret = RetrieveInfoForEpisodes(pItem, lResult, scraper, useLocal, pDlgProgress);
-      if (ret == INFO_ADDED)
-        m_database.SetPathHash(pItem->GetPath(), pItem->GetProperty("hash").asString());
-      return ret;
+      if (result == CInfoScanner::FULL_NFO)
+      {
+        long lResult = AddVideo(pItem, scraper->Content(), bDirNames, useLocal);
+        if (lResult < 0)
+          return INFO_ERROR;
+        if (fetchEpisodes)
+        {
+          INFO_RET ret = RetrieveInfoForEpisodes(pItem, lResult, scraper, useLocal, pDlgProgress);
+          if (ret == INFO_ADDED)
+            m_database.SetPathHash(pItem->GetPath(), pItem->GetProperty("hash").asString());
+          return ret;
+        }
+        return INFO_ADDED;
+      }
+      else if (result == CInfoScanner::URL_NFO || result == CInfoScanner::COMBINED_NFO)
+      {
+        scrUrl = loader->ScraperUrl();
+        pURL = &scrUrl;
+      }
+      else if (result == CInfoScanner::TITLE_NFO)
+      {
+        CVideoInfoTag* tag = pItem->GetVideoInfoTag();
+        movieTitle = tag->GetTitle();
+        movieYear = tag->GetYear(); // movieYear is expected to be >= 0
+      }
     }
-    return INFO_ADDED;
-  }
-  if (result == CInfoScanner::URL_NFO || result == CInfoScanner::COMBINED_NFO)
-  {
-    scrUrl = loader->ScraperUrl();
-    pURL = &scrUrl;
   }
 
   CScraperUrl url;
-  int retVal = 0;
-  std::string movieTitle = pItem->GetMovieName(bDirNames);
-  int movieYear = -1; // hint that movie title was not found
-  if (result == CInfoScanner::TITLE_NFO)
-  {
-    CVideoInfoTag* tag = pItem->GetVideoInfoTag();
-    movieTitle = tag->GetTitle();
-    movieYear = tag->GetYear(); // movieYear is expected to be >= 0
-  }
-
   std::string identifierType;
   std::string identifier;
   long lResult = -1;
@@ -705,6 +732,7 @@ CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForTvShow(CFileItem* pItem
     }
   }
 
+  int retVal = 0;
   if (pURL && pURL->HasUrls())
     url = *pURL;
   else if ((retVal = FindVideo(movieTitle, movieYear, scraper, url, pDlgProgress)) <= 0)
@@ -752,10 +780,12 @@ CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForMovie(CFileItem* pItem,
   if (m_handle)
     m_handle->SetText(pItem->GetMovieName(bDirNames));
 
+  // Local NFO file analysis
   CInfoScanner::INFO_TYPE result = CInfoScanner::NO_NFO;
   CScraperUrl scrUrl;
-  // handle .nfo files
   std::unique_ptr<IVideoInfoTagLoader> loader;
+  std::string movieTitle = pItem->GetMovieName(bDirNames);
+  int movieYear = -1; // hint that movie title was not found
   if (useLocal)
   {
     loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(*pItem, scraper, bDirNames));
@@ -763,34 +793,31 @@ CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForMovie(CFileItem* pItem,
     {
       pItem->GetVideoInfoTag()->Reset();
       result = loader->Load(*pItem->GetVideoInfoTag(), false);
+
+      if (result == CInfoScanner::FULL_NFO)
+      {
+        const int dbId = AddVideo(pItem, scraper->Content(), bDirNames, true);
+        if (dbId < 0)
+          return INFO_ERROR;
+        if (!m_ignoreVideoVersions && ProcessVideoVersion(VideoDbContentType::MOVIES, dbId))
+          return INFO_HAVE_ALREADY;
+        return INFO_ADDED;
+      }
+      else if (result == CInfoScanner::URL_NFO || result == CInfoScanner::COMBINED_NFO)
+      {
+        scrUrl = loader->ScraperUrl();
+        pURL = &scrUrl;
+      }
+      else if (result == CInfoScanner::TITLE_NFO)
+      {
+        CVideoInfoTag* tag = pItem->GetVideoInfoTag();
+        movieTitle = tag->GetTitle();
+        movieYear = tag->GetYear(); // movieYear is expected to be >= 0
+      }
     }
-  }
-  if (result == CInfoScanner::FULL_NFO)
-  {
-    const int dbId = AddVideo(pItem, scraper->Content(), bDirNames, true);
-    if (dbId < 0)
-      return INFO_ERROR;
-    if (!m_ignoreVideoVersions && ProcessVideoVersion(VideoDbContentType::MOVIES, dbId))
-      return INFO_HAVE_ALREADY;
-    return INFO_ADDED;
-  }
-  if (result == CInfoScanner::URL_NFO || result == CInfoScanner::COMBINED_NFO)
-  {
-    scrUrl = loader->ScraperUrl();
-    pURL = &scrUrl;
   }
 
   CScraperUrl url;
-  int retVal = 0;
-  std::string movieTitle = pItem->GetMovieName(bDirNames);
-  int movieYear = -1; // hint that movie title was not found
-  if (result == CInfoScanner::TITLE_NFO)
-  {
-    CVideoInfoTag* tag = pItem->GetVideoInfoTag();
-    movieTitle = tag->GetTitle();
-    movieYear = tag->GetYear(); // movieYear is expected to be >= 0
-  }
-
   std::string identifierType;
   std::string identifier;
   if (scraper->IsPython() && CUtil::GetFilenameIdentifier(movieTitle, identifierType, identifier))
@@ -811,10 +838,31 @@ CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForMovie(CFileItem* pItem,
     }
   }
 
+  int retVal = 0;
   if (pURL && pURL->HasUrls())
     url = *pURL;
   else if ((retVal = FindVideo(movieTitle, movieYear, scraper, url, pDlgProgress)) <= 0)
-    return retVal < 0 ? INFO_CANCELLED : INFO_NOT_FOUND;
+  {
+    if (retVal < 0)
+    {
+      return INFO_CANCELLED;
+    }
+    else
+    {
+      // Even if video is not identified, we add it with only the title.
+      std::string sCleanedTitle, sTitleYear, sYear;
+      CUtil::CleanString(movieTitle, sCleanedTitle, sTitleYear, sYear, true /*fRemoveExt*/, true);
+      CVideoInfoTag* tag = pItem->GetVideoInfoTag();
+      tag->SetTitle(sCleanedTitle);
+
+      const int dbId = AddVideo(pItem, scraper->Content(), bDirNames, useLocal);
+      if (dbId < 0)
+        return INFO_ERROR;
+      if (!m_ignoreVideoVersions && ProcessVideoVersion(VideoDbContentType::MOVIES, dbId))
+        return INFO_HAVE_ALREADY;
+      return INFO_ADDED;
+    }
+  }
 
   CLog::Log(LOGDEBUG, "VideoInfoScanner: Fetching url '{}' using {} scraper (content: '{}')",
             url.GetFirstThumbUrl(), scraper->Name(), TranslateContent(scraper->Content()));
@@ -857,10 +905,12 @@ CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForMusicVideo(
   if (m_handle)
     m_handle->SetText(pItem->GetMovieName(bDirNames));
 
+  // Local NFO file analysis
   CInfoScanner::INFO_TYPE result = CInfoScanner::NO_NFO;
   CScraperUrl scrUrl;
-  // handle .nfo files
   std::unique_ptr<IVideoInfoTagLoader> loader;
+  std::string movieTitle = pItem->GetMovieName(bDirNames);
+  int movieYear = -1; // hint that movie title was not found
   if (useLocal)
   {
     loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(*pItem, scraper, bDirNames));
@@ -868,31 +918,28 @@ CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForMusicVideo(
     {
       pItem->GetVideoInfoTag()->Reset();
       result = loader->Load(*pItem->GetVideoInfoTag(), false);
+
+      if (result == CInfoScanner::FULL_NFO)
+      {
+        if (AddVideo(pItem, scraper->Content(), bDirNames, true) < 0)
+          return INFO_ERROR;
+        return INFO_ADDED;
+      }
+      else if (result == CInfoScanner::URL_NFO || result == CInfoScanner::COMBINED_NFO)
+      {
+        scrUrl = loader->ScraperUrl();
+        pURL = &scrUrl;
+      }
+      else if (result == CInfoScanner::TITLE_NFO)
+      {
+        CVideoInfoTag* tag = pItem->GetVideoInfoTag();
+        movieTitle = tag->GetTitle();
+        movieYear = tag->GetYear(); // movieYear is expected to be >= 0
+      }
     }
-  }
-  if (result == CInfoScanner::FULL_NFO)
-  {
-    if (AddVideo(pItem, scraper->Content(), bDirNames, true) < 0)
-      return INFO_ERROR;
-    return INFO_ADDED;
-  }
-  if (result == CInfoScanner::URL_NFO || result == CInfoScanner::COMBINED_NFO)
-  {
-    scrUrl = loader->ScraperUrl();
-    pURL = &scrUrl;
   }
 
   CScraperUrl url;
-  int retVal = 0;
-  std::string movieTitle = pItem->GetMovieName(bDirNames);
-  int movieYear = -1; // hint that movie title was not found
-  if (result == CInfoScanner::TITLE_NFO)
-  {
-    CVideoInfoTag* tag = pItem->GetVideoInfoTag();
-    movieTitle = tag->GetTitle();
-    movieYear = tag->GetYear(); // movieYear is expected to be >= 0
-  }
-
   std::string identifierType;
   std::string identifier;
   if (scraper->IsPython() && CUtil::GetFilenameIdentifier(movieTitle, identifierType, identifier))
@@ -910,6 +957,7 @@ CInfoScanner::INFO_RET CVideoInfoScanner::RetrieveInfoForMusicVideo(
     }
   }
 
+  int retVal = 0;
   if (pURL && pURL->HasUrls())
     url = *pURL;
   else if ((retVal = FindVideo(movieTitle, movieYear, scraper, url, pDlgProgress)) <= 0)
@@ -1989,31 +2037,31 @@ CInfoScanner::INFO_RET CVideoInfoScanner::OnProcessSeriesFolder(
       item.GetVideoInfoTag()->m_iEpisode = file->iEpisode;
     }
 
-    // handle .nfo files
+    // Local NFO file analysis
     CInfoScanner::INFO_TYPE result = CInfoScanner::NO_NFO;
     CScraperUrl scrUrl;
-    const ScraperPtr& info(scraper);
     std::unique_ptr<IVideoInfoTagLoader> loader;
     if (useLocal)
     {
-      loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(item, info, false));
+      loader.reset(CVideoInfoTagLoaderFactory::CreateLoader(item, scraper, false));
       if (loader)
       {
         // no reset here on purpose
         result = loader->Load(*item.GetVideoInfoTag(), false);
+
+        if (result == CInfoScanner::FULL_NFO)
+        {
+          // override with episode and season number from file if available
+          if (file->iEpisode > -1)
+          {
+            item.GetVideoInfoTag()->m_iEpisode = file->iEpisode;
+            item.GetVideoInfoTag()->m_iSeason = file->iSeason;
+          }
+          if (AddVideo(&item, CONTENT_TVSHOWS, file->isFolder, true, &showInfo) < 0)
+            return INFO_ERROR;
+          continue;
+        }
       }
-    }
-    if (result == CInfoScanner::FULL_NFO)
-    {
-      // override with episode and season number from file if available
-      if (file->iEpisode > -1)
-      {
-        item.GetVideoInfoTag()->m_iEpisode = file->iEpisode;
-        item.GetVideoInfoTag()->m_iSeason = file->iSeason;
-      }
-      if (AddVideo(&item, CONTENT_TVSHOWS, file->isFolder, true, &showInfo) < 0)
-        return INFO_ERROR;
-      continue;
     }
 
     if (!hasEpisodeGuide)
